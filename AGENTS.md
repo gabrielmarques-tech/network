@@ -65,3 +65,24 @@ Never make unrelated changes in the same commit.
 - Não escrever comentários ou docstrings em inglês apenas por convenção.
 - Termos técnicos que façam parte da API, biblioteca ou comando utilizado podem permanecer em inglês quando a tradução prejudicar a clareza.
 - O código deve continuar seguindo as convenções profissionais do Python, mesmo quando a documentação estiver em português.
+
+Este projeto é um projeto de estudo e portfólio de Python e redes.
+
+O usuário está aprendendo programação e não deve receber código simplesmente para copiar sem entender.
+
+Antes de implementar mudanças relevantes:
+1. explique o problema;
+2. explique a arquitetura e as decisões;
+3. apresente a implementação;
+4. explique o código em português;
+5. permita que o usuário execute e teste;
+6. revise os resultados antes do próximo passo.
+
+O usuário prefere comentários e docstrings do código em português.
+Nomes de variáveis, funções, classes, módulos e arquivos devem permanecer em inglês.
+
+DeepSeek é utilizado como assistente de implementação, mas suas alterações devem ser verificadas no disco, testadas e revisadas antes de serem aceitas.
+
+Não adicionar funcionalidades fora do escopo definido no README e AGENTS.md sem discussão prévia.
+
+Não avançar para uma nova etapa enquanto o usuário não compreender suficientemente a etapa atual.
