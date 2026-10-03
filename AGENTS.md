@@ -30,6 +30,13 @@ The project is inspired by real ISP troubleshooting scenarios.
 The project separates responsibilities across layers. These boundaries
 must be respected:
 
+- `presentation/` — responsible for the CLI (argument parsing and dispatch)
+  and for converting analysis objects into readable text. It does not
+  execute commands, does not parse command output and does not interpret the
+  network.
+- `application/` — responsible for composing diagnostic execution with the
+  analysis of its result as a single use case. It is a thin layer and does
+  not run subprocesses, parse output or duplicate analysis rules.
 - `diagnostics/` — responsible for executing and orchestrating
   diagnostics (running commands, collecting raw output, coordinating the
   call to the parser).
@@ -37,8 +44,9 @@ must be respected:
   structured data. Parsers are pure functions.
 - `models/` — responsible for representing structured results as simple,
   immutable data containers.
-- `analysis/` — will be responsible for interpreting structured results
-  without executing commands or performing parsing.
+- `analysis/` — responsible for interpreting structured results without
+  executing commands or performing parsing, producing structured
+  interpretative findings.
 
 The diagnostic layer collects information. The analysis layer interprets
 information. These responsibilities must not be mixed.
@@ -47,16 +55,19 @@ information. These responsibilities must not be mixed.
 
 The project is being developed incrementally.
 
-The ping and traceroute diagnostics have already been implemented, tested
-and committed. The result models `PingResult`, `HopResult` and
-`TracerouteResult` also already exist.
+The ping and traceroute diagnostics, their parsers, the result models
+`PingResult`, `HopResult` and `TracerouteResult`, the `analysis/` layer
+(with analyses for ping and traceroute), the `application/` layer, the CLI
+and the result presentation have already been implemented, tested and
+committed.
 
-The `analysis/` layer is the next feature to be developed. It currently
-contains no code. It will interpret structured results without executing
-commands or performing parsing.
+The current focus is to consolidate and refine what already exists, keeping
+changes small and evidence-based. Do not introduce new diagnostics or layers
+beyond the established scope without prior discussion.
 
-Do not start implementing DNS, MTU, ipconfig or pathping until the
-current feature has been completed, tested and committed.
+Do not start implementing DNS, MTU, ipconfig or pathping until a next step
+has been agreed and the current work has been completed, tested and
+committed.
 
 ## Git Rules
 

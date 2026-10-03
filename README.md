@@ -34,10 +34,13 @@ The tool should prioritize **evidence-based diagnostics rather than assumptions*
 
 ## Core Diagnostic Tools
 
-The first version will use native Windows utilities such as:
+The tool uses native Windows utilities. Currently implemented:
 
 * `ping`
 * `tracert`
+
+Planned but **not implemented yet**:
+
 * `nslookup`
 * `ipconfig`
 * `arp`
@@ -49,16 +52,19 @@ Additional diagnostic capabilities may be added in future versions.
 
 ### Version 1
 
-The initial version will focus on:
+Implemented so far:
 
 1. Ping diagnostics
 2. Traceroute diagnostics
-3. DNS diagnostics
-4. Local IP configuration
-5. MTU diagnostics
-6. Basic diagnostic analysis
-7. Structured diagnostic results
-8. Automated tests
+3. Basic diagnostic analysis of ping and traceroute results
+4. Structured diagnostic results
+5. Automated tests
+
+Planned for V1, but **not implemented yet**:
+
+* DNS diagnostics
+* Local IP configuration diagnostics
+* MTU diagnostics
 
 ### Future Versions
 
@@ -85,24 +91,45 @@ The project is being developed incrementally. At the current stage:
 **Already implemented, tested and committed:**
 
 * `PingResult`, `HopResult` and `TracerouteResult` structured result models
-* Ping execution
-* Ping parsing
-* Traceroute execution
-* Traceroute parsing
-* Traceroute orchestration
-* Automated tests for the above (68 tests passing)
+* Ping execution and ping parsing
+* Traceroute execution, parsing and orchestration
+* The `analysis/` layer, with analyzers for ping and traceroute that
+  produce structured interpretative findings (`AnalysisFinding`, `Severity`)
+* The `application/` layer, which composes diagnosis and analysis
+* The `presentation/` layer, which formats analyses as terminal text
+* A CLI entry point (`python -m network_diagnostic`)
+* Automated tests for the above (154 tests passing)
 
 **Not implemented yet:**
 
-* CLI / command-line entry point
-* Result presentation to the user
-* Automatic analysis of structured results
 * DNS diagnostics
 * IP configuration diagnostics
 * MTU diagnostics
 * Pathping diagnostics
+* `nslookup`, `ipconfig` and `arp` based diagnostics
 
-The `analysis/` layer is still under development and currently contains no code.
+## Command-Line Usage
+
+The CLI is available through the package module. Currently there are two
+subcommands, `ping` and `traceroute`, each taking a single required positional
+`target` (an IP address or hostname):
+
+```text
+python -m network_diagnostic ping <target>
+python -m network_diagnostic traceroute <target>
+```
+
+Each subcommand runs the diagnostic, analyzes the result and prints the
+findings to the terminal. Internal parameters of the application layer (such as
+`count`, `max_hops` and `timeout_ms`) are not exposed on the CLI yet and use
+their default values.
+
+Exit codes:
+
+* `0` — the diagnostic ran successfully.
+* `1` — execution or parsing error.
+* `2` — argument/usage error, or a recognized subcommand without an explicit
+dispatch (handled by `argparse` for usage errors).
 
 ## Architecture
 
@@ -112,22 +139,49 @@ the files and directories that currently exist on disk.
 ```text
 network_diagnostic/
 │
+├── __main__.py        ← entry point for `python -m network_diagnostic`
+│
+├── presentation/      ← CLI parsing and text formatting
+│   ├── cli.py
+│   └── text.py
+│
+├── application/       ← use cases that compose diagnosis and analysis
+│   ├── ping.py
+│   └── traceroute.py
+│
 ├── diagnostics/       ← executes and orchestrates diagnostics
 │   ├── ping.py
 │   └── traceroute.py
 │
 ├── parsers/           ← transforms raw command output into structured data
+│   ├── ping.py
 │   └── traceroute.py
 │
 ├── models/            ← represents structured results
 │   └── results.py
 │
-└── analysis/          ← interprets structured results (not implemented yet)
+└── analysis/          ← interprets structured results
+    ├── findings.py
+    ├── ping.py
+    └── traceroute.py
 ```
 
-Note: the ping parser currently lives inside `diagnostics/ping.py`. This is
-the current state and is documented as such; it is not stated as a required
-refactoring task.
+Note: the ping parser lives in `parsers/ping.py` and the traceroute parser
+lives in `parsers/traceroute.py`.
+
+### Presentation
+
+Responsible for the CLI and for turning analysis objects into readable text.
+`presentation/cli.py` parses arguments and dispatches to the application layer;
+`presentation/text.py` contains pure formatting functions. This layer does not
+execute commands, does not parse command output and does not interpret the
+network.
+
+### Application
+
+Responsible for composing the diagnostic execution with the analysis of its
+result as a single use case. It is a thin layer: it does not run subprocesses,
+does not parse output and does not duplicate analysis rules.
 
 ### Diagnostics
 
@@ -139,7 +193,8 @@ to the parser).
 
 Responsible for transforming raw command output into structured data. Parsers
 are pure functions: they receive text and return models, without executing
-commands or accessing the network.
+commands or accessing the network. The ping parser is in `parsers/ping.py` and
+the traceroute parser is in `parsers/traceroute.py`.
 
 ### Models
 
@@ -148,10 +203,12 @@ data containers: `PingResult`, `HopResult` and `TracerouteResult` already exist.
 
 ### Analysis
 
-Responsible for interpreting collected evidence and producing technical
-conclusions. This layer is still under development and currently contains no
-code. It will interpret structured results without executing commands or
-performing parsing.
+Responsible for interpreting collected evidence and producing structured
+interpretative findings. The layer currently provides analyses for ping
+(`analyze_ping`) and traceroute (`analyze_traceroute`), producing findings as
+`AnalysisFinding` values with a `Severity`. It interprets structured results
+without executing commands or performing parsing, and it avoids unsupported
+conclusions.
 
 The diagnostic layer collects information.
 
@@ -162,17 +219,19 @@ These responsibilities should not be mixed unnecessarily.
 The current data flow is:
 
 ```text
-user input (not implemented)
+CLI (presentation/cli.py)
     ↓
-command execution (implemented: ping, traceroute)
+application (diagnose_and_analyze_*)
     ↓
-parsing (implemented: ping, traceroute)
+diagnostics (collects raw output)
     ↓
-structured models (implemented: PingResult, HopResult, TracerouteResult)
+parsers (raw output → structured models)
     ↓
-analysis (not implemented: analysis/ contains no code yet)
+models (PingResult, HopResult, TracerouteResult)
     ↓
-presentation (not implemented)
+analysis (findings: AnalysisFinding with Severity)
+    ↓
+presentation (text.py formats the analysis for the terminal)
 ```
 
 ## Diagnostic Philosophy
@@ -235,7 +294,8 @@ The project uses automated tests to validate:
 * Packet loss calculations
 * Latency calculations
 * Error handling
-* Diagnostic analysis (future)
+* Diagnostic analysis
+* CLI dispatch and text formatting
 
 Network commands should not be required for every unit test.
 
@@ -274,16 +334,19 @@ feat: add traceroute diagnostic
 
 ## Roadmap
 
-The ping and traceroute diagnostics have been implemented, tested and
-committed. The remaining work, in the recommended order, is:
+The ping and traceroute diagnostics, their parsers, the `analysis/` layer, the
+`application/` layer, the CLI and the result presentation have been
+implemented, tested and committed.
 
-1. Implement the `analysis/` layer to interpret structured results
-2. Add a CLI entry point and result presentation
-3. Implement remaining diagnostics: DNS, IP configuration, MTU, pathping
+The following items are **not implemented yet** and are candidates for future
+work (they are not currently available):
 
-The immediate next development step is to build the `analysis/` layer, which
-will interpret structured results without executing commands or performing
-parsing.
+* Additional diagnostics: DNS, IP configuration, MTU, pathping
+* Diagnostics based on `nslookup`, `ipconfig` and `arp`
+* Any expansion of the analysis rules beyond the current ping and traceroute
+  findings
+
+No next diagnostic is committed at this point.
 
 ## Non-Goals for Version 1
 
