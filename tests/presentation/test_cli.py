@@ -5,10 +5,14 @@ subcomando e o destino informado são repassados ao fluxo existente, se o
 resultado é apresentado e se um erro de execução ou de parsing vira mensagem
 e código de saída não nulo.
 
-Nenhum teste executa ping ou traceroute real ou acessa a rede: as funções da
-camada de aplicação e da camada de apresentação são substituídas por mock via
-monkeypatch.
+Nenhum teste executa ping ou traceroute real ou acessa a rede. A maioria dos
+testes substitui por mock as funções da camada de aplicação e da camada de
+apresentação via monkeypatch. Um único teste de integração executa as camadas
+reais de ponta a ponta, mockando somente a fronteira de execução
+(``subprocess.run``) do diagnóstico de ping.
 """
+
+import subprocess
 
 import pytest
 
@@ -258,3 +262,52 @@ def test_comando_inesperado_retorna_2_sem_acionar_handler(monkeypatch) -> None:
 
     assert exit_code == 2
     assert handlers_called == {"ping": False, "traceroute": False}
+
+
+# ---------------------------------------------------------------------------
+# Teste de integração (fluxo real, subprocess mockado)
+# ---------------------------------------------------------------------------
+
+
+# Saída PT-BR do ping.exe com sucesso total, compatível com o parser atual.
+_PING_SUCCESS_OUTPUT = """Disparando 8.8.8.8 com 32 bytes de dados:
+Resposta de 8.8.8.8: bytes=32 tempo=4ms TTL=116
+Resposta de 8.8.8.8: bytes=32 tempo=3ms TTL=116
+Resposta de 8.8.8.8: bytes=32 tempo=3ms TTL=116
+Resposta de 8.8.8.8: bytes=32 tempo=2ms TTL=116
+Estatísticas do Ping para 8.8.8.8:
+Pacotes: Enviados = 4, Recebidos = 4, Perdidos = 0 (0% de
+perda),
+Aproximar um número redondo de vezes em milissegundos:
+Mínimo = 2ms, Máximo = 4ms, Média = 3ms"""
+
+
+def test_ping_fluxo_completo_de_integracao(monkeypatch, capsys) -> None:
+    """Exercita o fluxo real de ponta a ponta, mockando só o subprocess.
+
+    Executa de verdade a CLI, a application, os diagnostics (incluindo a
+    montagem do comando em ``run_ping``), o parser, o modelo, a análise e a
+    apresentação. Apenas a fronteira de execução real do sistema operacional
+    (``network_diagnostic.diagnostics.ping.subprocess.run``) é substituída,
+    para impedir a execução do ping.exe. Verifica o código de saída, o alvo
+    e os códigos de achado estáveis produzidos pela análise real.
+    """
+    fake_completed = subprocess.CompletedProcess(
+        args=["ping", "-n", "4", "8.8.8.8"],
+        returncode=0,
+        stdout=_PING_SUCCESS_OUTPUT,
+        stderr="",
+    )
+
+    monkeypatch.setattr(
+        "network_diagnostic.diagnostics.ping.subprocess.run",
+        lambda command, **kwargs: fake_completed,
+    )
+
+    exit_code = cli.main(["ping", "8.8.8.8"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Alvo: 8.8.8.8" in output
+    assert "ping.no_loss" in output
+    assert "ping.latency_observed" in output
