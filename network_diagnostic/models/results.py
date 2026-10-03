@@ -31,3 +31,32 @@ class PingResult:
     def success(self) -> bool:
         """Indica se o ping recebeu ao menos uma resposta válida."""
         return self.packets_received > 0
+
+
+@dataclass(frozen=True)
+class HopResult:
+    """Resultado estruturado de um único salto de traceroute.
+
+    Contêiner de dados simples que representa a evidência coletada de um salto
+    do tracert.exe do Windows. Não executa comandos, não faz parsing da saída e
+    não interpreta os resultados.
+    """
+
+    hop_number: int
+    rtts_ms: list[float | None]
+    address: str | None
+    hostname: str | None
+
+
+@dataclass(frozen=True)
+class TracerouteResult:
+    """Resultado estruturado de uma execução de traceroute.
+
+    Contêiner de dados simples que representa as evidências coletadas a partir
+    de um comando de traceroute. Não executa o comando, não faz parsing da sua
+    saída e não analisa os resultados.
+    """
+
+    target: str
+    max_hops: int
+    hops: list[HopResult]
