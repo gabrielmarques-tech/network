@@ -1,13 +1,14 @@
-"""Modelo base da camada de análise.
+"""Contratos genéricos da camada de análise.
 
-Este módulo define o contrato mínimo e reutilizável para representar
-achados (findings) derivados de evidências de rede já estruturadas.
+Este módulo define o vocabulário mínimo e reutilizável para representar
+achados (findings) derivados de evidências de rede já estruturadas:
+``Severity`` e ``AnalysisFinding``.
 
-Ele contém apenas tipos/estruturas de dados: não executa comandos, não
-acessa a rede, não faz parsing e não interpreta resultados. As regras de
-diagnóstico (o que cada evidência significa) pertencem aos analisadores
-específicos de cada diagnóstico, como um futuro ``analyze_ping``.
-
+Ele contém apenas tipos/estruturas de dados genéricos, comuns a todos os
+diagnósticos: não executa comandos, não acessa a rede, não faz parsing e não
+interpreta resultados. As regras de diagnóstico e os agregados específicos de
+cada diagnóstico pertencem aos seus próprios módulos (por exemplo,
+``analyze_ping`` e ``PingAnalysis`` em ``network_diagnostic.analysis.ping``).
 Os achados são intencionalmente condicionais: cada um descreve o que foi
 observado e explicita suas limitações, sem afirmar causa raiz ou conclusões
 absolutas sobre a rede.
@@ -51,21 +52,3 @@ class AnalysisFinding:
     summary: str
     explanation: str
     limitation: str
-
-
-@dataclass(frozen=True)
-class PingAnalysis:
-    """Resultado da análise de uma execução de ping.
-
-    Contêiner de dados imutável que agrega os achados derivados de um
-    ``PingResult``. Não executa comandos, não acessa a rede e não contém
-    lógica de diagnóstico.
-
-    Campos:
-
-    - ``target``: alvo analisado (o mesmo alvo da evidência de origem).
-    - ``findings``: tupla imutável de ``AnalysisFinding``.
-    """
-
-    target: str
-    findings: tuple[AnalysisFinding, ...]

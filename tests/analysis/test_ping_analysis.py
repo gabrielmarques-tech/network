@@ -1,15 +1,20 @@
-"""Testes para o analisador de ping da V1 (``analyze_ping``).
+"""Testes para a análise de ping da V1 (``analyze_ping`` e ``PingAnalysis``).
 
 Estes testes validam o comportamento observável da interpretação de um
-``PingResult`` já estruturado. Nenhum teste executa ping real ou acessa a
-rede: os ``PingResult`` são criados em memória a partir de fixtures simples.
+``PingResult`` já estruturado e do contêiner ``PingAnalysis`` que agrega os
+achados. Nenhum teste executa ping real ou acessa a rede: os ``PingResult``
+são criados em memória a partir de fixtures simples.
 
 As regras da V1 são exatamente quatro condições: ``ping.no_loss``,
 ``ping.partial_loss``, ``ping.total_loss`` e ``ping.latency_observed``.
 """
 
-from network_diagnostic.analysis.findings import Severity
-from network_diagnostic.analysis.ping import analyze_ping
+from dataclasses import FrozenInstanceError
+
+import pytest
+
+from network_diagnostic.analysis.findings import AnalysisFinding, Severity
+from network_diagnostic.analysis.ping import PingAnalysis, analyze_ping
 from network_diagnostic.models.results import PingResult
 
 
@@ -43,6 +48,19 @@ def make_total_loss_result(**overrides: object) -> PingResult:
     }
     data.update(overrides)
     return PingResult(**data)  # type: ignore[arg-type]
+
+
+def make_finding(**overrides: object) -> AnalysisFinding:
+    """Cria um AnalysisFinding padrão, permitindo sobrescrever campos."""
+    data: dict[str, object] = {
+        "code": "ping.total_loss",
+        "severity": Severity.CRITICAL,
+        "summary": "Não houve resposta a nenhum pacote.",
+        "explanation": "Nenhuma resposta foi recebida para os pacotes enviados.",
+        "limitation": "ICMP pode ser filtrado; a ausência de resposta não prova que o alvo está indisponível.",
+    }
+    data.update(overrides)
+    return AnalysisFinding(**data)  # type: ignore[arg-type]
 
 
 def codes(analysis) -> list[str]:
@@ -316,3 +334,48 @@ def test_does_not_mutate_result():
     analyze_ping(result)
 
     assert result == original
+
+
+def test_ping_analysis_stores_attributes_as_given() -> None:
+    """PingAnalysis armazena target e findings como informados."""
+    finding = make_finding()
+    analysis = PingAnalysis(target="8.8.8.8", findings=(finding,))
+
+    assert analysis.target == "8.8.8.8"
+    assert analysis.findings == (finding,)
+
+
+def test_ping_analysis_findings_accepts_tuple() -> None:
+    """PingAnalysis.findings aceita uma tupla de AnalysisFinding."""
+    findings = (make_finding(), make_finding(code="ping.high_latency"))
+    analysis = PingAnalysis(target="8.8.8.8", findings=findings)
+
+    assert isinstance(analysis.findings, tuple)
+    assert all(isinstance(item, AnalysisFinding) for item in analysis.findings)
+
+
+def test_ping_analysis_findings_accepts_empty_tuple() -> None:
+    """A tupla de achados pode ser vazia."""
+    analysis = PingAnalysis(target="8.8.8.8", findings=())
+
+    assert analysis.findings == ()
+
+
+def test_ping_analysis_is_immutable() -> None:
+    """A tentativa de alterar um campo levanta FrozenInstanceError."""
+    analysis = PingAnalysis(target="8.8.8.8", findings=())
+
+    with pytest.raises(FrozenInstanceError):
+        analysis.target = "1.1.1.1"  # type: ignore[misc]
+
+
+def test_ping_analysis_equality_by_value() -> None:
+    """Duas análises com os mesmos campos são iguais por valor."""
+    assert (
+        PingAnalysis(target="8.8.8.8", findings=())
+        == PingAnalysis(target="8.8.8.8", findings=())
+    )
+    assert (
+        PingAnalysis(target="8.8.8.8", findings=())
+        != PingAnalysis(target="1.1.1.1", findings=())
+    )

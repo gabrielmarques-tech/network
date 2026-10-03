@@ -23,12 +23,28 @@ Os achados são produzidos em ordem determinística: a condição de perda vem
 primeiro e, quando aplicável, ``ping.latency_observed`` vem em seguida.
 """
 
-from network_diagnostic.analysis.findings import (
-    AnalysisFinding,
-    PingAnalysis,
-    Severity,
-)
+from dataclasses import dataclass
+
+from network_diagnostic.analysis.findings import AnalysisFinding, Severity
 from network_diagnostic.models.results import PingResult
+
+
+@dataclass(frozen=True)
+class PingAnalysis:
+    """Resultado da análise de uma execução de ping.
+
+    Contêiner de dados imutável que agrega os achados derivados de um
+    ``PingResult``. Não executa comandos, não acessa a rede e não contém
+    lógica de diagnóstico.
+
+    Campos:
+
+    - ``target``: alvo analisado (o mesmo alvo da evidência de origem).
+    - ``findings``: tupla imutável de ``AnalysisFinding``.
+    """
+
+    target: str
+    findings: tuple[AnalysisFinding, ...]
 
 
 def analyze_ping(result: PingResult) -> PingAnalysis:
