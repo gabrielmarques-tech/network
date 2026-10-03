@@ -134,7 +134,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     Devolve ``0`` em caso de sucesso e ``1`` quando o comando de diagnóstico
     não pôde ser executado ou quando a sua saída não pôde ser interpretada.
     Erros de argumentos são tratados pelo ``argparse`` (encerram com código
-    de saída ``2``).
+    de saída ``2``); um subcomando reconhecido sem despacho explícito também
+    devolve ``2``, sem acionar nenhum handler.
 
     O parâmetro ``argv`` permite injetar argumentos nos testes; quando é
     ``None``, o ``argparse`` lê de ``sys.argv``.
@@ -145,5 +146,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "ping":
         return _handle_ping(args.target)
 
-    # Único subcomando restante nesta V1.
-    return _handle_traceroute(args.target)
+    if args.command == "traceroute":
+        return _handle_traceroute(args.target)
+
+    # Subcomando reconhecido pelo argparse, mas sem despacho explícito
+    # associado. Não deve cair implicitamente em nenhum handler existente.
+    return 2

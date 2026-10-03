@@ -222,3 +222,39 @@ def test_ausencia_de_target_encerra_com_erro() -> None:
         cli.main(["ping"])
 
     assert excinfo.value.code == 2
+
+
+def test_comando_inesperado_retorna_2_sem_acionar_handler(monkeypatch) -> None:
+    """Um ``command`` sem despacho explícito devolve 2 sem acionar handlers.
+
+    Injeta um parser falso cujo ``parse_args`` devolve um subcomando que não
+    existe no argparse real, para exercitar apenas o despacho de ``main`` —
+    sem registrar um terceiro subcomando no argparse. Garante que o valor
+    inesperado não seja encaminhado implicitamente a nenhum handler.
+    """
+    handlers_called: dict[str, bool] = {"ping": False, "traceroute": False}
+
+    class _FakeArgs:
+        command = "comando-inesperado"
+        target = "8.8.8.8"
+
+    class _FakeParser:
+        def parse_args(self, argv):
+            return _FakeArgs()
+
+    def fake_handle_ping(target):
+        handlers_called["ping"] = True
+        return 0
+
+    def fake_handle_traceroute(target):
+        handlers_called["traceroute"] = True
+        return 0
+
+    monkeypatch.setattr(cli, "_build_parser", lambda: _FakeParser())
+    monkeypatch.setattr(cli, "_handle_ping", fake_handle_ping)
+    monkeypatch.setattr(cli, "_handle_traceroute", fake_handle_traceroute)
+
+    exit_code = cli.main([])
+
+    assert exit_code == 2
+    assert handlers_called == {"ping": False, "traceroute": False}
