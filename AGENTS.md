@@ -25,14 +25,38 @@ The project is inspired by real ISP troubleshooting scenarios.
 14. Do not rewrite unrelated files.
 15. Keep changes small and focused.
 
+## Layer Responsibilities
+
+The project separates responsibilities across layers. These boundaries
+must be respected:
+
+- `diagnostics/` — responsible for executing and orchestrating
+  diagnostics (running commands, collecting raw output, coordinating the
+  call to the parser).
+- `parsers/` — responsible for transforming raw command output into
+  structured data. Parsers are pure functions.
+- `models/` — responsible for representing structured results as simple,
+  immutable data containers.
+- `analysis/` — will be responsible for interpreting structured results
+  without executing commands or performing parsing.
+
+The diagnostic layer collects information. The analysis layer interprets
+information. These responsibilities must not be mixed.
+
 ## Current Priority
 
-The current feature being developed is:
+The project is being developed incrementally.
 
-Ping diagnostic.
+The ping and traceroute diagnostics have already been implemented, tested
+and committed. The result models `PingResult`, `HopResult` and
+`TracerouteResult` also already exist.
 
-Do not start implementing traceroute, DNS, MTU or other diagnostics
-until the current feature has been completed, tested and committed.
+The `analysis/` layer is the next feature to be developed. It currently
+contains no code. It will interpret structured results without executing
+commands or performing parsing.
+
+Do not start implementing DNS, MTU, ipconfig or pathping until the
+current feature has been completed, tested and committed.
 
 ## Git Rules
 

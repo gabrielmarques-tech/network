@@ -78,45 +78,102 @@ Possible future improvements include:
 
 These features are intentionally outside the initial scope.
 
+## Current Development Stage
+
+The project is being developed incrementally. At the current stage:
+
+**Already implemented, tested and committed:**
+
+* `PingResult`, `HopResult` and `TracerouteResult` structured result models
+* Ping execution
+* Ping parsing
+* Traceroute execution
+* Traceroute parsing
+* Traceroute orchestration
+* Automated tests for the above (68 tests passing)
+
+**Not implemented yet:**
+
+* CLI / command-line entry point
+* Result presentation to the user
+* Automatic analysis of structured results
+* DNS diagnostics
+* IP configuration diagnostics
+* MTU diagnostics
+* Pathping diagnostics
+
+The `analysis/` layer is still under development and currently contains no code.
+
 ## Architecture
 
-The project is organized into separate layers.
+The project is organized into separate layers. The structure below reflects
+the files and directories that currently exist on disk.
 
 ```text
 network_diagnostic/
 │
-├── diagnostics/
+├── diagnostics/       ← executes and orchestrates diagnostics
 │   ├── ping.py
-│   ├── traceroute.py
-│   ├── dns.py
-│   ├── ipconfig.py
-│   ├── mtu.py
-│   └── pathping.py
+│   └── traceroute.py
 │
-├── analysis/
-│   └── analyzer.py
+├── parsers/           ← transforms raw command output into structured data
+│   └── traceroute.py
 │
-└── models/
-    └── results.py
+├── models/            ← represents structured results
+│   └── results.py
+│
+└── analysis/          ← interprets structured results (not implemented yet)
 ```
+
+Note: the ping parser currently lives inside `diagnostics/ping.py`. This is
+the current state and is documented as such; it is not stated as a required
+refactoring task.
 
 ### Diagnostics
 
-Responsible for executing network diagnostic commands and collecting their results.
+Responsible for executing network diagnostic commands and orchestrating their
+collection (running commands, collecting raw output and coordinating the call
+to the parser).
+
+### Parsers
+
+Responsible for transforming raw command output into structured data. Parsers
+are pure functions: they receive text and return models, without executing
+commands or accessing the network.
 
 ### Models
 
-Responsible for representing structured diagnostic data.
+Responsible for representing structured diagnostic data as simple, immutable
+data containers: `PingResult`, `HopResult` and `TracerouteResult` already exist.
 
 ### Analysis
 
-Responsible for interpreting collected evidence and producing technical conclusions.
+Responsible for interpreting collected evidence and producing technical
+conclusions. This layer is still under development and currently contains no
+code. It will interpret structured results without executing commands or
+performing parsing.
 
-The diagnostic layer should collect information.
+The diagnostic layer collects information.
 
-The analysis layer should interpret information.
+The analysis layer interprets information.
 
 These responsibilities should not be mixed unnecessarily.
+
+The current data flow is:
+
+```text
+user input (not implemented)
+    ↓
+command execution (implemented: ping, traceroute)
+    ↓
+parsing (implemented: ping, traceroute)
+    ↓
+structured models (implemented: PingResult, HopResult, TracerouteResult)
+    ↓
+analysis (not implemented: analysis/ contains no code yet)
+    ↓
+presentation (not implemented)
+```
 
 ## Diagnostic Philosophy
 
@@ -126,9 +183,9 @@ For example:
 
 > Packet loss detected at an intermediate traceroute hop does not automatically mean that the router at that hop is defective.
 
-Some network devices may limit or deprioritize ICMP responses while continuing to forward traffic normally.
+Some network devices may limit or deprioritize ICMP responses while continuing to forward traffic normally. A router that does not answer a probe at one hop may still be forwarding the traffic of the following hops correctly.
 
-Therefore, the application should compare multiple measurements and destinations before suggesting a possible problem.
+Therefore, the application should compare multiple measurements and destinations before suggesting a possible problem. It must not interpret loss or latency at an intermediate hop in isolation as a failure of that router.
 
 Example:
 
@@ -171,14 +228,14 @@ The project follows these principles:
 
 ## Testing Strategy
 
-The project will use automated tests to validate:
+The project uses automated tests to validate:
 
 * Command parsing
 * Diagnostic result models
 * Packet loss calculations
 * Latency calculations
 * Error handling
-* Diagnostic analysis
+* Diagnostic analysis (future)
 
 Network commands should not be required for every unit test.
 
@@ -215,20 +272,18 @@ test: add ping parser tests
 feat: add traceroute diagnostic
 ```
 
-## Current Development Stage
+## Roadmap
 
-The project is currently focused on implementing the first diagnostic capability: **Ping**.
+The ping and traceroute diagnostics have been implemented, tested and
+committed. The remaining work, in the recommended order, is:
 
-The immediate development sequence is:
+1. Implement the `analysis/` layer to interpret structured results
+2. Add a CLI entry point and result presentation
+3. Implement remaining diagnostics: DNS, IP configuration, MTU, pathping
 
-1. Define the ping result model
-2. Implement ping execution
-3. Implement ping output parsing
-4. Create automated tests
-5. Validate real execution
-6. Review the implementation
-7. Commit the completed feature
-8. Move to the next diagnostic
+The immediate next development step is to build the `analysis/` layer, which
+will interpret structured results without executing commands or performing
+parsing.
 
 ## Non-Goals for Version 1
 
