@@ -11,9 +11,13 @@ A CLI é organizada em subcomandos, um por diagnóstico disponível nesta V1:
     python -m network_diagnostic ping <target>
     python -m network_diagnostic traceroute <target>
 
-Cada subcomando tem apenas um argumento posicional obrigatório (``target``).
-Parâmetros internos da camada de aplicação (como ``count``, ``max_hops`` e
-``timeout_ms``) permanecem com seus valores padrão e não são expostos aqui.
+Cada subcomando tem um argumento posicional obrigatório (``target``).
+O subcomando ``ping`` expõe ainda o argumento opcional ``--count``, que
+permite ao técnico ajustar a quantidade de pacotes ICMP; quando omitido,
+assume o mesmo default da camada de aplicação (4), preservando o
+comportamento anterior. Os demais parâmetros internos da camada de aplicação
+(como ``max_hops`` e ``timeout_ms`` do traceroute) permanecem com seus
+valores padrão e não são expostos aqui.
 
 Fluxo de cada subcomando:
 
@@ -43,6 +47,37 @@ from network_diagnostic.presentation.text import (
 
 _TARGET_HELP = "Destino do diagnóstico (por exemplo, um IP ou um nome de host)."
 
+# Quantidade padrão de pacotes ICMP do subcomando ping. Mantém o mesmo
+# default da camada de aplicação (diagnose_and_analyze_ping), de modo que o
+# comportamento atual permanece inalterado quando o usuário omite --count.
+_DEFAULT_PING_COUNT = 4
+
+
+def _positive_int(value: str) -> int:
+    """Converte ``value`` em inteiro, exigindo que seja positivo.
+
+    Usado como ``type`` de um argumento do argparse: a validação acontece
+    durante o parsing, antes de qualquer diagnóstico ser acionado. Assim, um
+    valor inválido (não inteiro ou menor ou igual a zero) é rejeitado pelo
+    argparse com código de saída 2, sem executar o ping.
+
+    Levanta ``argparse.ArgumentTypeError`` quando o valor não é um inteiro
+    positivo válido.
+    """
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"valor inválido para inteiro: {value!r}"
+        ) from None
+
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError(
+            "o valor deve ser um inteiro positivo (maior que zero)"
+        )
+
+    return parsed
+
 
 def _build_parser() -> argparse.ArgumentParser:
     """Constrói o parser de argumentos da linha de comando.
@@ -70,6 +105,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     ping_parser.add_argument("target", help=_TARGET_HELP)
+    ping_parser.add_argument(
+        "--count",
+        type=_positive_int,
+        default=_DEFAULT_PING_COUNT,
+        help=(
+            "Quantidade de pacotes ICMP a enviar (inteiro positivo; "
+            "padrão: %(default)s)."
+        ),
+    )
 
     traceroute_parser = subparsers.add_parser(
         "traceroute",
@@ -84,18 +128,22 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _handle_ping(target: str) -> int:
+def _handle_ping(target: str, count: int) -> int:
     """Executa o subcomando ``ping`` e devolve o código de saída.
 
     Aciona a camada de aplicação (que compõe diagnóstico e análise) e
     apresenta o texto produzido pela camada de apresentação. Não interpreta
     a rede: apenas orquestra e exibe.
 
+    ``count`` é repassado sem alteração a ``diagnose_and_analyze_ping``; a
+    validação do valor é feita pelo ``argparse`` (via ``_positive_int``) antes
+    de o diagnóstico ser acionado.
+
     Captura apenas as exceções do domínio de ping (execução e parsing). As
     demais exceções são propagadas, para não esconder falhas.
     """
     try:
-        analysis = diagnose_and_analyze_ping(target)
+        analysis = diagnose_and_analyze_ping(target, count=count)
     except (PingExecutionError, PingParseError) as error:
         print(f"Erro: {error}")
         return 1
@@ -144,7 +192,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "ping":
-        return _handle_ping(args.target)
+        return _handle_ping(args.target, args.count)
 
     if args.command == "traceroute":
         return _handle_traceroute(args.target)

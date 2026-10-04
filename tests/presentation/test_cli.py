@@ -44,7 +44,7 @@ def test_ping_repassa_target_ao_fluxo(monkeypatch) -> None:
     """O destino informado é repassado à camada de aplicação."""
     captured: dict[str, object] = {}
 
-    def fake_diagnose(target):
+    def fake_diagnose(target, count=4):
         captured["target"] = target
         return _fake_ping_analysis(target)
 
@@ -62,7 +62,9 @@ def test_ping_exibe_resultado_formatado(monkeypatch, capsys) -> None:
     analysis = _fake_ping_analysis("1.1.1.1")
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(cli, "diagnose_and_analyze_ping", lambda target: analysis)
+    monkeypatch.setattr(
+        cli, "diagnose_and_analyze_ping", lambda target, count=4: analysis
+    )
 
     def fake_format(received):
         captured["analysis"] = received
@@ -81,7 +83,7 @@ def test_ping_trata_erro_de_execucao(monkeypatch, capsys) -> None:
     message = "O comando 'ping' não foi encontrado no sistema."
     analysis_was_formatted: dict[str, bool] = {"called": False}
 
-    def fake_diagnose(target):
+    def fake_diagnose(target, count=4):
         raise PingExecutionError(message)
 
     def fake_format(analysis):
@@ -103,7 +105,7 @@ def test_ping_trata_erro_de_parsing(monkeypatch, capsys) -> None:
     message = "Não foi possível interpretar a saída do ping para '8.8.8.8'."
     analysis_was_formatted: dict[str, bool] = {"called": False}
 
-    def fake_diagnose(target):
+    def fake_diagnose(target, count=4):
         raise PingParseError(message)
 
     def fake_format(analysis):
@@ -118,6 +120,59 @@ def test_ping_trata_erro_de_parsing(monkeypatch, capsys) -> None:
     assert exit_code == 1
     assert analysis_was_formatted["called"] is False
     assert message in capsys.readouterr().out
+
+
+def test_ping_usa_count_padrao_quando_omitido(monkeypatch) -> None:
+    """Sem --count, o default 4 é repassado à camada de aplicação."""
+    captured: dict[str, object] = {}
+
+    def fake_diagnose(target, count=4):
+        captured["count"] = count
+        return _fake_ping_analysis(target)
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_ping", fake_diagnose)
+    monkeypatch.setattr(cli, "format_ping_analysis", lambda analysis: "texto")
+
+    cli.main(["ping", "8.8.8.8"])
+
+    assert captured["count"] == 4
+
+
+def test_ping_repassa_count_informado(monkeypatch) -> None:
+    """O --count informado é repassado exatamente à camada de aplicação."""
+    captured: dict[str, object] = {}
+
+    def fake_diagnose(target, count=4):
+        captured["target"] = target
+        captured["count"] = count
+        return _fake_ping_analysis(target)
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_ping", fake_diagnose)
+    monkeypatch.setattr(cli, "format_ping_analysis", lambda analysis: "texto")
+
+    exit_code = cli.main(["ping", "8.8.8.8", "--count", "10"])
+
+    assert captured["target"] == "8.8.8.8"
+    assert captured["count"] == 10
+    assert exit_code == 0
+
+
+@pytest.mark.parametrize("invalid_count", ["0", "-3", "abc", "2.5"])
+def test_ping_rejeita_count_invalido(monkeypatch, invalid_count) -> None:
+    """Um --count inválido faz o argparse encerrar com código 2 sem diagnóstico."""
+    diagnose_called: dict[str, bool] = {"called": False}
+
+    def fake_diagnose(target, count=4):
+        diagnose_called["called"] = True
+        return _fake_ping_analysis(target)
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_ping", fake_diagnose)
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["ping", "8.8.8.8", "--count", invalid_count])
+
+    assert excinfo.value.code == 2
+    assert diagnose_called["called"] is False
 
 
 # ---------------------------------------------------------------------------
