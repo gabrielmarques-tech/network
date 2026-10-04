@@ -60,3 +60,43 @@ class TracerouteResult:
     target: str
     max_hops: int
     hops: list[HopResult]
+
+
+@dataclass(frozen=True)
+class PathpingHop:
+    """Resultado estruturado das estatísticas de um único salto do pathping.
+
+    Contêiner de dados simples que representa a evidência coletada da seção de
+    estatísticas do pathping.exe do Windows. Não executa comandos, não faz
+    parsing da saída e não interpreta os resultados.
+
+    As duas colunas de perda são mantidas separadas porque representam medições
+    diferentes:
+
+    - ``source_loss_percent`` corresponde à coluna "Origem aqui" (perda
+      acumulada da origem até este salto).
+    - ``link_loss_percent`` corresponde à coluna "Este nó/Vínculo" (perda
+      observada especificamente neste nó ou vínculo).
+    """
+
+    hop_number: int
+    rtt_ms: float | None
+    source_loss_percent: float | None
+    link_loss_percent: float | None
+    address: str | None
+
+
+@dataclass(frozen=True)
+class PathpingResult:
+    """Resultado estruturado de uma execução de pathping.
+
+    Contêiner de dados simples que representa as evidências coletadas a partir
+    da seção de estatísticas de um comando pathping. Não executa o comando, não
+    faz parsing da sua saída e não analisa os resultados.
+
+    ``hops`` contém apenas os saltos com estatísticas (a partir do salto 1). O
+    salto 0, que representa o próprio computador de origem, não é incluído.
+    """
+
+    target: str
+    hops: list[PathpingHop]
