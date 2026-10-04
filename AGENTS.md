@@ -55,19 +55,20 @@ information. These responsibilities must not be mixed.
 
 The project is being developed incrementally.
 
-The ping and traceroute diagnostics, their parsers, the result models
-`PingResult`, `HopResult` and `TracerouteResult`, the `analysis/` layer
-(with analyses for ping and traceroute), the `application/` layer, the CLI
-and the result presentation have already been implemented, tested and
-committed.
+The ping, traceroute and pathping diagnostics, their parsers, the result
+models `PingResult`, `HopResult`, `TracerouteResult`, `PathpingHop` and
+`PathpingResult`, the `analysis/` layer (with analyses for ping, traceroute
+and pathping), the `application/` layer, the CLI and the result presentation
+have been implemented and tested. Note that the pathping implementation is
+currently only partially committed: part of it is in the working tree and
+has not been committed yet.
 
 The current focus is to consolidate and refine what already exists, keeping
 changes small and evidence-based. Do not introduce new diagnostics or layers
 beyond the established scope without prior discussion.
 
-Do not start implementing DNS, MTU, ipconfig or pathping until a next step
-has been agreed and the current work has been completed, tested and
-committed.
+Do not start implementing DNS, MTU or ipconfig until a next step has been
+agreed and the current work has been completed, tested and committed.
 
 ## Git Rules
 

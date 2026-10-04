@@ -5,10 +5,10 @@ subcomando e o destino informado são repassados ao fluxo existente, se o
 resultado é apresentado e se um erro de execução ou de parsing vira mensagem
 e código de saída não nulo.
 
-Nenhum teste executa ping ou traceroute real ou acessa a rede. A maioria dos
-testes substitui por mock as funções da camada de aplicação e da camada de
-apresentação via monkeypatch. Um único teste de integração executa as camadas
-reais de ponta a ponta, mockando somente a fronteira de execução
+Nenhum teste executa ping, traceroute ou pathping real ou acessa a rede. A
+maioria dos testes substitui por mock as funções da camada de aplicação e da
+camada de apresentação via monkeypatch. Um único teste de integração executa
+as camadas reais de ponta a ponta, mockando somente a fronteira de execução
 (``subprocess.run``) do diagnóstico de ping.
 """
 
@@ -16,10 +16,13 @@ import subprocess
 
 import pytest
 
+from network_diagnostic.analysis.pathping import PathpingAnalysis
 from network_diagnostic.analysis.ping import PingAnalysis
 from network_diagnostic.analysis.traceroute import TracerouteAnalysis
+from network_diagnostic.diagnostics.pathping import PathpingExecutionError
 from network_diagnostic.diagnostics.ping import PingExecutionError
 from network_diagnostic.diagnostics.traceroute import TracerouteExecutionError
+from network_diagnostic.parsers.pathping import PathpingParseError
 from network_diagnostic.parsers.ping import PingParseError
 from network_diagnostic.parsers.traceroute import TracerouteParseError
 from network_diagnostic.presentation import cli
@@ -42,6 +45,11 @@ def _fake_ping_analysis(target: str = "8.8.8.8") -> PingAnalysis:
 def _fake_traceroute_analysis(target: str = "8.8.8.8") -> TracerouteAnalysis:
     """Cria um TracerouteAnalysis fictício, sem executar diagnóstico nem análise."""
     return TracerouteAnalysis(target=target, findings=(), hops=())
+
+
+def _fake_pathping_analysis(target: str = "100.64.1.172") -> PathpingAnalysis:
+    """Cria um PathpingAnalysis fictício, sem executar diagnóstico nem análise."""
+    return PathpingAnalysis(target=target, findings=(), hops=())
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +277,101 @@ def test_traceroute_trata_erro_de_parsing(monkeypatch, capsys) -> None:
     assert exit_code == 1
     assert analysis_was_formatted["called"] is False
     assert message in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Subcomando pathping
+# ---------------------------------------------------------------------------
+
+
+def test_pathping_repassa_target_ao_fluxo(monkeypatch) -> None:
+    """O destino informado é repassado à camada de aplicação."""
+    captured: dict[str, object] = {}
+
+    def fake_diagnose(target):
+        captured["target"] = target
+        return _fake_pathping_analysis(target)
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_pathping", fake_diagnose)
+    monkeypatch.setattr(cli, "format_pathping_analysis", lambda analysis: "texto")
+
+    exit_code = cli.main(["pathping", "100.64.1.172"])
+
+    assert captured["target"] == "100.64.1.172"
+    assert exit_code == 0
+
+
+def test_pathping_exibe_resultado_formatado(monkeypatch, capsys) -> None:
+    """O texto produzido pela apresentação é exibido no terminal."""
+    analysis = _fake_pathping_analysis("100.64.1.172")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        cli, "diagnose_and_analyze_pathping", lambda target: analysis
+    )
+
+    def fake_format(received):
+        captured["analysis"] = received
+        return "SALTOS FORMATADOS"
+
+    monkeypatch.setattr(cli, "format_pathping_analysis", fake_format)
+
+    cli.main(["pathping", "100.64.1.172"])
+
+    assert captured["analysis"] is analysis
+    assert "SALTOS FORMATADOS" in capsys.readouterr().out
+
+
+def test_pathping_trata_erro_de_execucao(monkeypatch, capsys) -> None:
+    """PathpingExecutionError vira mensagem e código de saída 1, sem formatar."""
+    message = "O comando 'pathping' não foi encontrado no sistema."
+    analysis_was_formatted: dict[str, bool] = {"called": False}
+
+    def fake_diagnose(target):
+        raise PathpingExecutionError(message)
+
+    def fake_format(analysis):
+        analysis_was_formatted["called"] = True
+        return ""
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_pathping", fake_diagnose)
+    monkeypatch.setattr(cli, "format_pathping_analysis", fake_format)
+
+    exit_code = cli.main(["pathping", "100.64.1.172"])
+
+    assert exit_code == 1
+    assert analysis_was_formatted["called"] is False
+    assert message in capsys.readouterr().out
+
+
+def test_pathping_trata_erro_de_parsing(monkeypatch, capsys) -> None:
+    """PathpingParseError vira mensagem e código de saída 1, sem formatar."""
+    message = "A saída não contém um cabeçalho ou salto reconhecível do pathping."
+    analysis_was_formatted: dict[str, bool] = {"called": False}
+
+    def fake_diagnose(target):
+        raise PathpingParseError(message)
+
+    def fake_format(analysis):
+        analysis_was_formatted["called"] = True
+        return ""
+
+    monkeypatch.setattr(cli, "diagnose_and_analyze_pathping", fake_diagnose)
+    monkeypatch.setattr(cli, "format_pathping_analysis", fake_format)
+
+    exit_code = cli.main(["pathping", "100.64.1.172"])
+
+    assert exit_code == 1
+    assert analysis_was_formatted["called"] is False
+    assert message in capsys.readouterr().out
+
+
+def test_pathping_ausencia_de_target_encerra_com_erro() -> None:
+    """A ausência do destino no pathping faz o argparse encerrar com código 2."""
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main(["pathping"])
+
+    assert excinfo.value.code == 2
 
 
 # ---------------------------------------------------------------------------

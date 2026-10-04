@@ -10,14 +10,15 @@ A CLI é organizada em subcomandos, um por diagnóstico disponível nesta V1:
 
     python -m network_diagnostic ping <target>
     python -m network_diagnostic traceroute <target>
+    python -m network_diagnostic pathping <target>
 
 Cada subcomando tem um argumento posicional obrigatório (``target``).
 O subcomando ``ping`` expõe ainda o argumento opcional ``--count``, que
 permite ao técnico ajustar a quantidade de pacotes ICMP; quando omitido,
 assume o mesmo default da camada de aplicação (4), preservando o
 comportamento anterior. Os demais parâmetros internos da camada de aplicação
-(como ``max_hops`` e ``timeout_ms`` do traceroute) permanecem com seus
-valores padrão e não são expostos aqui.
+(como ``max_hops`` e ``timeout_ms`` do traceroute e do pathping) permanecem
+com seus valores padrão e não são expostos aqui.
 
 Fluxo de cada subcomando:
 
@@ -32,15 +33,21 @@ Toda a interpretação de rede permanece nas camadas de diagnóstico e análise.
 import argparse
 from collections.abc import Sequence
 
+from network_diagnostic.application.pathping import (
+    diagnose_and_analyze_pathping,
+)
 from network_diagnostic.application.ping import diagnose_and_analyze_ping
 from network_diagnostic.application.traceroute import (
     diagnose_and_analyze_traceroute,
 )
+from network_diagnostic.diagnostics.pathping import PathpingExecutionError
 from network_diagnostic.diagnostics.ping import PingExecutionError
 from network_diagnostic.diagnostics.traceroute import TracerouteExecutionError
+from network_diagnostic.parsers.pathping import PathpingParseError
 from network_diagnostic.parsers.ping import PingParseError
 from network_diagnostic.parsers.traceroute import TracerouteParseError
 from network_diagnostic.presentation.text import (
+    format_pathping_analysis,
     format_ping_analysis,
     format_traceroute_analysis,
 )
@@ -125,6 +132,16 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     traceroute_parser.add_argument("target", help=_TARGET_HELP)
 
+    pathping_parser = subparsers.add_parser(
+        "pathping",
+        help="Executa um diagnóstico de pathping.",
+        description=(
+            "Executa um diagnóstico de pathping e apresenta os achados "
+            "da análise."
+        ),
+    )
+    pathping_parser.add_argument("target", help=_TARGET_HELP)
+
     return parser
 
 
@@ -172,6 +189,27 @@ def _handle_traceroute(target: str) -> int:
     return 0
 
 
+def _handle_pathping(target: str) -> int:
+    """Executa o subcomando ``pathping`` e devolve o código de saída.
+
+    Aciona a camada de aplicação (que compõe diagnóstico e análise) e
+    apresenta o texto produzido pela camada de apresentação. Não interpreta
+    a rede: apenas orquestra e exibe.
+
+    Captura apenas as exceções do domínio de pathping (execução e parsing).
+    As demais exceções são propagadas, para não esconder falhas. O
+    ``returncode`` do processo não é inspecionado aqui.
+    """
+    try:
+        analysis = diagnose_and_analyze_pathping(target)
+    except (PathpingExecutionError, PathpingParseError) as error:
+        print(f"Erro: {error}")
+        return 1
+
+    print(format_pathping_analysis(analysis))
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Executa o fluxo da CLI e devolve o código de saída.
 
@@ -196,6 +234,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "traceroute":
         return _handle_traceroute(args.target)
+
+    if args.command == "pathping":
+        return _handle_pathping(args.target)
 
     # Subcomando reconhecido pelo argparse, mas sem despacho explícito
     # associado. Não deve cair implicitamente em nenhum handler existente.

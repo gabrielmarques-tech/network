@@ -38,13 +38,13 @@ The tool uses native Windows utilities. Currently implemented:
 
 * `ping`
 * `tracert`
+* `pathping`
 
 Planned but **not implemented yet**:
 
 * `nslookup`
 * `ipconfig`
 * `arp`
-* `pathping`
 
 Additional diagnostic capabilities may be added in future versions.
 
@@ -56,9 +56,10 @@ Implemented so far:
 
 1. Ping diagnostics
 2. Traceroute diagnostics
-3. Basic diagnostic analysis of ping and traceroute results
-4. Structured diagnostic results
-5. Automated tests
+3. Pathping diagnostics
+4. Basic diagnostic analysis of ping, traceroute and pathping results
+5. Structured diagnostic results
+6. Automated tests
 
 Planned for V1, but **not implemented yet**:
 
@@ -90,39 +91,49 @@ The project is being developed incrementally. At the current stage:
 
 **Already implemented, tested and committed:**
 
-* `PingResult`, `HopResult` and `TracerouteResult` structured result models
+* `PingResult`, `HopResult`, `TracerouteResult`, `PathpingHop` and
+  `PathpingResult` structured result models
 * Ping execution and ping parsing
 * Traceroute execution, parsing and orchestration
-* The `analysis/` layer, with analyzers for ping and traceroute that
-  produce structured interpretative findings (`AnalysisFinding`, `Severity`)
+* Pathping execution, parsing and orchestration
+* The `analysis/` layer, with analyzers for ping, traceroute and pathping
+  that produce structured interpretative findings (`AnalysisFinding`,
+  `Severity`)
 * The `application/` layer, which composes diagnosis and analysis
 * The `presentation/` layer, which formats analyses as terminal text
 * A CLI entry point (`python -m network_diagnostic`)
-* Automated tests for the above (154 tests passing)
+* Automated tests for the above (275 tests passing)
 
 **Not implemented yet:**
 
 * DNS diagnostics
 * IP configuration diagnostics
 * MTU diagnostics
-* Pathping diagnostics
 * `nslookup`, `ipconfig` and `arp` based diagnostics
 
 ## Command-Line Usage
 
-The CLI is available through the package module. Currently there are two
-subcommands, `ping` and `traceroute`, each taking a single required positional
-`target` (an IP address or hostname):
+The CLI is available through the package module. Currently there are three
+subcommands, `ping`, `traceroute` and `pathping`, each taking a single required
+positional `target` (an IP address or hostname):
 
 ```text
 python -m network_diagnostic ping <target>
 python -m network_diagnostic traceroute <target>
+python -m network_diagnostic pathping <target>
 ```
 
+The `ping` subcommand also exposes an optional `--count` argument to set the
+number of ICMP packets; when omitted, it keeps the application layer default
+(4), preserving the previous behavior.
+
 Each subcommand runs the diagnostic, analyzes the result and prints the
-findings to the terminal. Internal parameters of the application layer (such as
-`count`, `max_hops` and `timeout_ms`) are not exposed on the CLI yet and use
-their default values.
+findings to the terminal. The remaining internal parameters of the application
+layer (such as `max_hops` and `timeout_ms`) are not exposed on the CLI yet and
+use their default values.
+
+Note: `pathping` performs multiple rounds of probes and may take a while to
+finish.
 
 Exit codes:
 
@@ -147,15 +158,18 @@ network_diagnostic/
 │
 ├── application/       ← use cases that compose diagnosis and analysis
 │   ├── ping.py
-│   └── traceroute.py
+│   ├── traceroute.py
+│   └── pathping.py
 │
 ├── diagnostics/       ← executes and orchestrates diagnostics
 │   ├── ping.py
-│   └── traceroute.py
+│   ├── traceroute.py
+│   └── pathping.py
 │
 ├── parsers/           ← transforms raw command output into structured data
 │   ├── ping.py
-│   └── traceroute.py
+│   ├── traceroute.py
+│   └── pathping.py
 │
 ├── models/            ← represents structured results
 │   └── results.py
@@ -163,11 +177,13 @@ network_diagnostic/
 └── analysis/          ← interprets structured results
     ├── findings.py
     ├── ping.py
-    └── traceroute.py
+    ├── traceroute.py
+    └── pathping.py
 ```
 
-Note: the ping parser lives in `parsers/ping.py` and the traceroute parser
-lives in `parsers/traceroute.py`.
+Note: the ping parser lives in `parsers/ping.py`, the traceroute parser lives
+in `parsers/traceroute.py` and the pathping parser lives in
+`parsers/pathping.py`.
 
 ### Presentation
 
@@ -193,22 +209,24 @@ to the parser).
 
 Responsible for transforming raw command output into structured data. Parsers
 are pure functions: they receive text and return models, without executing
-commands or accessing the network. The ping parser is in `parsers/ping.py` and
-the traceroute parser is in `parsers/traceroute.py`.
+commands or accessing the network. The ping parser is in `parsers/ping.py`,
+the traceroute parser is in `parsers/traceroute.py` and the pathping parser is
+in `parsers/pathping.py`.
 
 ### Models
 
 Responsible for representing structured diagnostic data as simple, immutable
-data containers: `PingResult`, `HopResult` and `TracerouteResult` already exist.
+data containers: `PingResult`, `HopResult`, `TracerouteResult`, `PathpingHop`
+and `PathpingResult` already exist.
 
 ### Analysis
 
 Responsible for interpreting collected evidence and producing structured
 interpretative findings. The layer currently provides analyses for ping
-(`analyze_ping`) and traceroute (`analyze_traceroute`), producing findings as
-`AnalysisFinding` values with a `Severity`. It interprets structured results
-without executing commands or performing parsing, and it avoids unsupported
-conclusions.
+(`analyze_ping`), traceroute (`analyze_traceroute`) and pathping
+(`analyze_pathping`), producing findings as `AnalysisFinding` values with a
+`Severity`. It interprets structured results without executing commands or
+performing parsing, and it avoids unsupported conclusions.
 
 The diagnostic layer collects information.
 
@@ -227,7 +245,7 @@ diagnostics (collects raw output)
     ↓
 parsers (raw output → structured models)
     ↓
-models (PingResult, HopResult, TracerouteResult)
+models (PingResult, HopResult, TracerouteResult, PathpingResult)
     ↓
 analysis (findings: AnalysisFinding with Severity)
     ↓
@@ -334,17 +352,17 @@ feat: add traceroute diagnostic
 
 ## Roadmap
 
-The ping and traceroute diagnostics, their parsers, the `analysis/` layer, the
-`application/` layer, the CLI and the result presentation have been
+The ping, traceroute and pathping diagnostics, their parsers, the `analysis/`
+layer, the `application/` layer, the CLI and the result presentation have been
 implemented, tested and committed.
 
 The following items are **not implemented yet** and are candidates for future
 work (they are not currently available):
 
-* Additional diagnostics: DNS, IP configuration, MTU, pathping
+* Additional diagnostics: DNS, IP configuration, MTU
 * Diagnostics based on `nslookup`, `ipconfig` and `arp`
-* Any expansion of the analysis rules beyond the current ping and traceroute
-  findings
+* Any expansion of the analysis rules beyond the current ping, traceroute and
+  pathping findings
 
 No next diagnostic is committed at this point.
 

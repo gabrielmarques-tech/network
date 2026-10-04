@@ -6,10 +6,12 @@ parsing.
 """
 
 from network_diagnostic.analysis.findings import AnalysisFinding, Severity
+from network_diagnostic.analysis.pathping import PathpingAnalysis
 from network_diagnostic.analysis.ping import PingAnalysis
 from network_diagnostic.analysis.traceroute import TracerouteAnalysis
-from network_diagnostic.models.results import HopResult
+from network_diagnostic.models.results import HopResult, PathpingHop
 from network_diagnostic.presentation.text import (
+    format_pathping_analysis,
     format_ping_analysis,
     format_traceroute_analysis,
 )
@@ -376,3 +378,142 @@ def test_retorno_como_str():
 
     assert isinstance(format_ping_analysis(ping_analysis), str)
     assert isinstance(format_traceroute_analysis(traceroute_analysis), str)
+
+
+def _make_pathping_hop(**overrides: object) -> PathpingHop:
+    """Constrói um ``PathpingHop`` diretamente, sem executar diagnósticos."""
+    data: dict[str, object] = {
+        "hop_number": 1,
+        "rtt_ms": 0.0,
+        "source_loss_percent": 0.0,
+        "link_loss_percent": 0.0,
+        "address": "192.168.1.1",
+    }
+    data.update(overrides)
+    return PathpingHop(**data)  # type: ignore[arg-type]
+
+
+def _make_pathping_analysis(**overrides: object) -> PathpingAnalysis:
+    """Constrói um ``PathpingAnalysis`` com saltos de exemplo coerentes."""
+    data: dict[str, object] = {
+        "target": "100.64.1.172",
+        "findings": (),
+        "hops": (
+            _make_pathping_hop(hop_number=1, address="192.168.1.1", rtt_ms=0.0),
+            _make_pathping_hop(hop_number=2, address="172.17.10.1", rtt_ms=2.0),
+        ),
+    }
+    data.update(overrides)
+    return PathpingAnalysis(**data)  # type: ignore[arg-type]
+
+
+def test_pathping_target_aparece():
+    analysis = _make_pathping_analysis(target="100.64.1.172")
+
+    text = format_pathping_analysis(analysis)
+
+    assert "Alvo: 100.64.1.172" in text
+
+
+def test_pathping_mostra_numero_endereco_e_rtt():
+    analysis = _make_pathping_analysis()
+
+    text = format_pathping_analysis(analysis)
+
+    assert "Saltos:" in text
+    assert "1" in text
+    assert "2" in text
+    assert "192.168.1.1" in text
+    assert "172.17.10.1" in text
+    assert "2.0 ms" in text
+
+
+def test_pathping_mostra_origem_e_enlace():
+    analysis = _make_pathping_analysis(
+        hops=(
+            _make_pathping_hop(
+                hop_number=3,
+                address="100.64.1.172",
+                rtt_ms=3.0,
+                source_loss_percent=5.0,
+                link_loss_percent=5.0,
+            ),
+        )
+    )
+
+    text = format_pathping_analysis(analysis)
+
+    assert "Origem: 5.0%" in text
+    assert "Enlace: 5.0%" in text
+
+
+def test_pathping_none_nao_aparece_como_none():
+    analysis = _make_pathping_analysis(
+        hops=(
+            _make_pathping_hop(
+                hop_number=1,
+                rtt_ms=None,
+                source_loss_percent=None,
+                link_loss_percent=None,
+                address=None,
+            ),
+        )
+    )
+
+    text = format_pathping_analysis(analysis)
+
+    assert "None" not in text
+    assert "indisponível" in text
+    assert "*" in text
+
+
+def test_pathping_evidencia_antes_dos_findings():
+    finding = _make_finding(code="pathping.hop_link_loss")
+    analysis = _make_pathping_analysis(findings=(finding,))
+
+    text = format_pathping_analysis(analysis)
+
+    assert text.index("Saltos:") < text.index("pathping.hop_link_loss")
+    assert text.index("Alvo:") < text.index("pathping.hop_link_loss")
+
+
+def test_pathping_sem_hops_nao_quebra():
+    analysis = _make_pathping_analysis(hops=())
+
+    text = format_pathping_analysis(analysis)
+
+    assert isinstance(text, str)
+    assert "Saltos:" in text
+    assert "Nenhum salto" in text
+
+
+def test_pathping_sem_findings():
+    analysis = _make_pathping_analysis(findings=())
+
+    text = format_pathping_analysis(analysis)
+
+    assert "Nenhum achado" in text
+
+
+def test_pathping_com_finding_exibe_severidade_e_limitation():
+    finding = _make_finding(
+        code="pathping.hop_link_loss",
+        severity=Severity.WARNING,
+        summary="Perda observada no vínculo do salto 2 (5.0%).",
+        explanation="A coluna do salto/vínculo indica perda observada.",
+        limitation="A perda de ICMP não prova a causa da degradação.",
+    )
+    analysis = _make_pathping_analysis(findings=(finding,))
+
+    text = format_pathping_analysis(analysis)
+
+    assert "Atenção" in text
+    assert "pathping.hop_link_loss" in text
+    assert "Perda observada no vínculo do salto 2 (5.0%)." in text
+    assert "Limitação" in text
+
+
+def test_pathping_retorno_como_str():
+    analysis = _make_pathping_analysis()
+
+    assert isinstance(format_pathping_analysis(analysis), str)

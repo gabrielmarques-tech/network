@@ -9,21 +9,23 @@ Responsabilidade:
 
     PingAnalysis        →  format_ping_analysis()        →  str
     TracerouteAnalysis  →  format_traceroute_analysis()  →  str
+    PathpingAnalysis    →  format_pathping_analysis()    →  str
 
 Para o ping, o texto exibe primeiro o bloco de evidência objetiva carregado
-pela análise e, em seguida, os achados. Para o traceroute, exibe o alvo, o
-bloco da rota coletada (evidência, sem interpretação) e, em seguida, os
-achados. Em ambos os casos o texto reproduz somente o que já existe nos
-objetos de análise (severidade, código, resumo, explicação e, quando
-preenchida, a limitação), preservando a ordem em que os achados foram
-produzidos pela camada de análise. A rota não recebe severidade nem
+pela análise e, em seguida, os achados. Para o traceroute e o pathping, exibe
+o alvo, o bloco da evidência coletada (rota ou saltos, sem interpretação) e,
+em seguida, os achados. Em todos os casos o texto reproduz somente o que já
+existe nos objetos de análise (severidade, código, resumo, explicação e,
+quando preenchida, a limitação), preservando a ordem em que os achados foram
+produzidos pela camada de análise. A evidência não recebe severidade nem
 diagnóstico: é exibida apenas como evidência.
 """
 
 from network_diagnostic.analysis.findings import AnalysisFinding, Severity
+from network_diagnostic.analysis.pathping import PathpingAnalysis
 from network_diagnostic.analysis.ping import PingAnalysis
 from network_diagnostic.analysis.traceroute import TracerouteAnalysis
-from network_diagnostic.models.results import HopResult
+from network_diagnostic.models.results import HopResult, PathpingHop
 
 # Rótulos visuais em português para cada nível de severidade existente.
 _SEVERITY_LABELS: dict[Severity, str] = {
@@ -71,19 +73,19 @@ def _format_findings(findings: tuple[AnalysisFinding, ...]) -> str:
 def _format_analysis(
     target: str,
     findings: tuple[AnalysisFinding, ...],
-    route: str | None = None,
+    evidence: str | None = None,
 ) -> str:
-    """Monta o texto de uma análise a partir de seu alvo, rota e achados.
+    """Monta o texto de uma análise a partir de seu alvo, evidência e achados.
 
     Função pura e determinística: preserva a ordem dos achados recebidos e
     não produz nenhuma informação que não esteja contida neles. O bloco de
-    rota é opcional: quando ``route`` é ``None`` o comportamento é idêntico
-    ao anterior, exibindo apenas alvo e achados.
+    evidência é opcional: quando ``evidence`` é ``None`` o comportamento é
+    idêntico ao anterior, exibindo apenas alvo e achados.
     """
     lines = [f"Alvo: {target}"]
 
-    if route is not None:
-        lines.append(route)
+    if evidence is not None:
+        lines.append(evidence)
 
     if not findings:
         lines.append("Nenhum achado de análise foi produzido para esta execução.")
@@ -163,6 +165,54 @@ def _format_route(hops: tuple[HopResult, ...]) -> str:
     return "\n".join(lines)
 
 
+def _format_percent(value: float | None) -> str:
+    """Formata um percentual de perda, ou um marcador de indisponibilidade.
+
+    Função pura: quando ``value`` é ``None`` (coluna de perda ausente no
+    modelo, como no salto sem estatística) devolve o mesmo marcador textual
+    usado para latências indisponíveis; caso contrário, devolve o valor
+    seguido de ``%``. Não fabrica números.
+    """
+    if value is None:
+        return _LATENCY_UNAVAILABLE
+    return f"{value}%"
+
+
+def _format_pathping_hop_line(hop: PathpingHop) -> str:
+    """Monta a linha de evidência de um único salto do pathping.
+
+    Função pura: exibe número do salto, identificação, RTT e as duas colunas
+    de perda (acumulada, "Origem", e do próprio nó/vínculo, "Enlace"). A
+    linha é apenas evidência: não recebe severidade nem interpretação. Valores
+    ausentes usam as convenções já existentes (``*`` para RTT e o marcador de
+    indisponibilidade para percentuais), nunca ``None``.
+    """
+    identifier = hop.address if hop.address else "(sem identificação)"
+    rtt = _format_rtt(hop.rtt_ms)
+    source = _format_percent(hop.source_loss_percent)
+    link = _format_percent(hop.link_loss_percent)
+    return (
+        f"  {hop.hop_number}  {identifier}  {rtt}  "
+        f"Origem: {source}  Enlace: {link}"
+    )
+
+
+def _format_pathping_hops(hops: tuple[PathpingHop, ...]) -> str:
+    """Monta o bloco textual da evidência de saltos do pathping.
+
+    Função pura e determinística: preserva a ordem dos saltos recebidos e não
+    produz nenhuma informação que não esteja neles. Quando não há saltos,
+    informa explicitamente que nenhum salto foi coletado, sem inventar dados.
+    """
+    lines = ["Saltos:"]
+    if not hops:
+        lines.append("  Nenhum salto foi coletado nesta execução.")
+    else:
+        for hop in hops:
+            lines.append(_format_pathping_hop_line(hop))
+    return "\n".join(lines)
+
+
 def _format_ping_objective(analysis: PingAnalysis) -> str:
     """Monta o bloco de evidência objetiva de um ``PingAnalysis``.
 
@@ -218,4 +268,22 @@ def format_traceroute_analysis(analysis: TracerouteAnalysis) -> str:
     à rota.
     """
     route = _format_route(analysis.hops)
-    return _format_analysis(analysis.target, analysis.findings, route=route)
+    return _format_analysis(analysis.target, analysis.findings, evidence=route)
+
+
+def format_pathping_analysis(analysis: PathpingAnalysis) -> str:
+    """Formata um ``PathpingAnalysis`` em texto legível para o usuário.
+
+    Função pura: recebe apenas o objeto de análise e devolve uma ``str``.
+    Não executa comandos, não acessa a rede, não faz parsing, não cria novos
+    achados e não altera o objeto recebido.
+
+    A saída apresenta o alvo, o bloco da evidência de saltos (número,
+    identificação, RTT e as colunas Origem/Enlace, sem interpretação) e, em
+    seguida, os achados. O bloco de saltos é montado por
+    ``_format_pathping_hops`` e entregue a ``_format_analysis`` como um bloco
+    opcional, garantindo que a evidência apareça antes dos achados. Nenhum
+    salto é reclassificado e nenhuma severidade é atribuída à evidência.
+    """
+    hops = _format_pathping_hops(analysis.hops)
+    return _format_analysis(analysis.target, analysis.findings, evidence=hops)
