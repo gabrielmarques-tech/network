@@ -32,6 +32,24 @@ def _fake_ping_result(target: str = "8.8.8.8") -> PingResult:
     )
 
 
+def _empty_analysis(result: PingResult) -> PingAnalysis:
+    """Cria um PingAnalysis vazio a partir de um resultado, sem análise real.
+
+    Copia os campos objetivos do resultado apenas para manter a assinatura
+    correta do contêiner; os achados ficam vazios.
+    """
+    return PingAnalysis(
+        target=result.target,
+        packets_sent=result.packets_sent,
+        packets_received=result.packets_received,
+        packet_loss_percent=result.packet_loss_percent,
+        min_latency_ms=result.min_latency_ms,
+        avg_latency_ms=result.avg_latency_ms,
+        max_latency_ms=result.max_latency_ms,
+        findings=(),
+    )
+
+
 def test_application_calls_diagnose_with_expected_params(monkeypatch) -> None:
     """diagnose_and_analyze_ping repassa target e count ao diagnóstico."""
     captured: dict[str, object] = {}
@@ -42,7 +60,7 @@ def test_application_calls_diagnose_with_expected_params(monkeypatch) -> None:
         return _fake_ping_result(target)
 
     monkeypatch.setattr(application_ping, "diagnose_ping", fake_diagnose)
-    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: PingAnalysis(result.target, ()))
+    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: _empty_analysis(result))
 
     diagnose_and_analyze_ping("8.8.8.8", count=7)
 
@@ -59,7 +77,7 @@ def test_application_forwards_default_count(monkeypatch) -> None:
         return _fake_ping_result(target)
 
     monkeypatch.setattr(application_ping, "diagnose_ping", fake_diagnose)
-    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: PingAnalysis(result.target, ()))
+    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: _empty_analysis(result))
 
     diagnose_and_analyze_ping("8.8.8.8")
 
@@ -75,7 +93,7 @@ def test_application_passes_result_exactly_to_analysis(monkeypatch) -> None:
 
     def fake_analyze(result):
         captured["result"] = result
-        return PingAnalysis(result.target, ())
+        return _empty_analysis(result)
 
     monkeypatch.setattr(application_ping, "analyze_ping", fake_analyze)
 
@@ -86,7 +104,7 @@ def test_application_passes_result_exactly_to_analysis(monkeypatch) -> None:
 
 def test_application_returns_analysis_result_unchanged(monkeypatch) -> None:
     """O mesmo PingAnalysis produzido pela análise é retornado."""
-    expected = PingAnalysis(target="8.8.8.8", findings=())
+    expected = _empty_analysis(_fake_ping_result())
 
     monkeypatch.setattr(application_ping, "diagnose_ping", lambda target, count=4: _fake_ping_result(target))
     monkeypatch.setattr(application_ping, "analyze_ping", lambda result: expected)
@@ -103,7 +121,7 @@ def test_application_propagates_diagnostics_error(monkeypatch) -> None:
         raise RuntimeError("falha no diagnóstico")
 
     monkeypatch.setattr(application_ping, "diagnose_ping", fake_diagnose)
-    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: PingAnalysis(result.target, ()))
+    monkeypatch.setattr(application_ping, "analyze_ping", lambda result: _empty_analysis(result))
 
     with pytest.raises(RuntimeError):
         diagnose_and_analyze_ping("8.8.8.8")
@@ -131,7 +149,7 @@ def test_application_does_not_call_analysis_when_diagnostics_fails(monkeypatch) 
 
     def fake_analyze(result):
         analysis_called["called"] = True
-        return PingAnalysis(result.target, ())
+        return _empty_analysis(result)
 
     monkeypatch.setattr(application_ping, "diagnose_ping", fake_diagnose)
     monkeypatch.setattr(application_ping, "analyze_ping", fake_analyze)

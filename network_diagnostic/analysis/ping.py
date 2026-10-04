@@ -34,16 +34,37 @@ class PingAnalysis:
     """Resultado da análise de uma execução de ping.
 
     Contêiner de dados imutável que agrega os achados derivados de um
-    ``PingResult``. Não executa comandos, não acessa a rede e não contém
-    lógica de diagnóstico.
+    ``PingResult`` e os dados objetivos essenciais à apresentação. Não
+    executa comandos, não acessa a rede e não contém lógica de diagnóstico.
+
+    Ele carrega adiante duas coisas do resultado analisado:
+
+    - os dados objetivos necessários à apresentação (contagens de pacotes,
+      perda e latências mínima, média e máxima);
+    - os achados interpretativos derivados desses dados.
+
+    Os campos objetivos são copiados explicitamente do ``PingResult``. O
+    contrato é intencionalmente pequeno e não inclui ``rtts_ms``.
 
     Campos:
 
     - ``target``: alvo analisado (o mesmo alvo da evidência de origem).
+    - ``packets_sent``: quantidade de requisições enviadas.
+    - ``packets_received``: quantidade de respostas recebidas.
+    - ``packet_loss_percent``: percentual de perda observado.
+    - ``min_latency_ms``: latência mínima em ms, ou ``None`` se indisponível.
+    - ``avg_latency_ms``: latência média em ms, ou ``None`` se indisponível.
+    - ``max_latency_ms``: latência máxima em ms, ou ``None`` se indisponível.
     - ``findings``: tupla imutável de ``AnalysisFinding``.
     """
 
     target: str
+    packets_sent: int
+    packets_received: int
+    packet_loss_percent: float
+    min_latency_ms: float | None
+    avg_latency_ms: float | None
+    max_latency_ms: float | None
     findings: tuple[AnalysisFinding, ...]
 
 
@@ -142,4 +163,16 @@ def analyze_ping(result: PingResult) -> PingAnalysis:
             )
         )
 
-    return PingAnalysis(target=result.target, findings=tuple(findings))
+    # Copia explícita dos campos objetivos do PingResult para o contrato da
+    # análise: cada valor usado pelos achados é também repassado adiante para
+    # a apresentação, sem recalcular nem reinterpretar nada.
+    return PingAnalysis(
+        target=result.target,
+        packets_sent=result.packets_sent,
+        packets_received=result.packets_received,
+        packet_loss_percent=result.packet_loss_percent,
+        min_latency_ms=result.min_latency_ms,
+        avg_latency_ms=result.avg_latency_ms,
+        max_latency_ms=result.max_latency_ms,
+        findings=tuple(findings),
+    )

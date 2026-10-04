@@ -27,7 +27,16 @@ from network_diagnostic.presentation import cli
 
 def _fake_ping_analysis(target: str = "8.8.8.8") -> PingAnalysis:
     """Cria um PingAnalysis fictício, sem executar diagnóstico nem análise."""
-    return PingAnalysis(target=target, findings=())
+    return PingAnalysis(
+        target=target,
+        packets_sent=4,
+        packets_received=4,
+        packet_loss_percent=0.0,
+        min_latency_ms=2.0,
+        avg_latency_ms=3.0,
+        max_latency_ms=4.0,
+        findings=(),
+    )
 
 
 def _fake_traceroute_analysis(target: str = "8.8.8.8") -> TracerouteAnalysis:
@@ -364,5 +373,15 @@ def test_ping_fluxo_completo_de_integracao(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "Alvo: 8.8.8.8" in output
+    # Bloco de evidência objetiva gerado pela análise real.
+    assert "Pacotes enviados: 4" in output
+    assert "Pacotes recebidos: 4" in output
+    assert "Pacotes perdidos: 0" in output
+    assert "Perda de pacotes: 0.0%" in output
+    assert "Latência mínima: 2.0 ms" in output
+    assert "Latência média: 3.0 ms" in output
+    assert "Latência máxima: 4.0 ms" in output
+    # Bloco objetivo vem antes dos achados interpretativos.
+    assert output.index("Pacotes enviados:") < output.index("ping.no_loss")
     assert "ping.no_loss" in output
     assert "ping.latency_observed" in output

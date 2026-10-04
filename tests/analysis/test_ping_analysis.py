@@ -2,8 +2,8 @@
 
 Estes testes validam o comportamento observável da interpretação de um
 ``PingResult`` já estruturado e do contêiner ``PingAnalysis`` que agrega os
-achados. Nenhum teste executa ping real ou acessa a rede: os ``PingResult``
-são criados em memória a partir de fixtures simples.
+achados e os dados objetivos. Nenhum teste executa ping real ou acessa a
+rede: os ``PingResult`` são criados em memória a partir de fixtures simples.
 
 As regras da V1 são exatamente quatro condições: ``ping.no_loss``,
 ``ping.partial_loss``, ``ping.total_loss`` e ``ping.latency_observed``.
@@ -32,6 +32,26 @@ def make_result(**overrides: object) -> PingResult:
     }
     data.update(overrides)
     return PingResult(**data)  # type: ignore[arg-type]
+
+
+def make_analysis(**overrides: object) -> PingAnalysis:
+    """Cria um PingAnalysis válido para os testes.
+
+    Preenche os campos objetivos com valores coerentes e permite sobrescrever
+    qualquer um deles.
+    """
+    data: dict[str, object] = {
+        "target": "8.8.8.8",
+        "packets_sent": 10,
+        "packets_received": 10,
+        "packet_loss_percent": 0.0,
+        "min_latency_ms": 10.0,
+        "avg_latency_ms": 20.0,
+        "max_latency_ms": 30.0,
+        "findings": (),
+    }
+    data.update(overrides)
+    return PingAnalysis(**data)  # type: ignore[arg-type]
 
 
 def make_total_loss_result(**overrides: object) -> PingResult:
@@ -66,6 +86,7 @@ def make_finding(**overrides: object) -> AnalysisFinding:
 def codes(analysis) -> list[str]:
     """Retorna os códigos dos achados na ordem produzida."""
     return [finding.code for finding in analysis.findings]
+
 
 def test_no_loss_generates_no_loss_finding():
     result = make_result()
@@ -165,6 +186,7 @@ def test_total_loss_does_not_generate_latency_finding():
         finding.code != "ping.latency_observed"
         for finding in analysis.findings
     )
+
 
 def test_latency_finding_reports_observed_values():
     result = make_result(
@@ -269,6 +291,7 @@ def test_messages_use_real_values_for_total_loss():
     assert "1.1.1.1" in finding.summary
     assert "4 pacotes enviados" in finding.explanation
 
+
 def test_all_findings_have_limitation():
     analysis = analyze_ping(make_result())
 
@@ -336,19 +359,78 @@ def test_does_not_mutate_result():
     assert result == original
 
 
+# ---------------------------------------------------------------------------
+# Dados objetivos carregados adiante por analyze_ping
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_ping_preserves_objective_fields() -> None:
+    """analyze_ping copia os campos objetivos do PingResult para a análise."""
+    result = make_result(
+        target="dns.google",
+        packets_sent=10,
+        packets_received=8,
+        packet_loss_percent=20.0,
+        min_latency_ms=11.0,
+        avg_latency_ms=22.0,
+        max_latency_ms=40.0,
+    )
+
+    analysis = analyze_ping(result)
+
+    assert analysis.target == "dns.google"
+    assert analysis.packets_sent == 10
+    assert analysis.packets_received == 8
+    assert analysis.packet_loss_percent == 20.0
+    assert analysis.min_latency_ms == 11.0
+    assert analysis.avg_latency_ms == 22.0
+    assert analysis.max_latency_ms == 40.0
+
+
+def test_analyze_ping_preserves_none_latencies_on_total_loss() -> None:
+    """Na perda total, as latências None são preservadas como None."""
+    result = make_total_loss_result()
+
+    analysis = analyze_ping(result)
+
+    assert analysis.min_latency_ms is None
+    assert analysis.avg_latency_ms is None
+    assert analysis.max_latency_ms is None
+
+
+# ---------------------------------------------------------------------------
+# Contêiner PingAnalysis
+# ---------------------------------------------------------------------------
+
+
 def test_ping_analysis_stores_attributes_as_given() -> None:
-    """PingAnalysis armazena target e findings como informados."""
+    """PingAnalysis armazena os campos como informados."""
     finding = make_finding()
-    analysis = PingAnalysis(target="8.8.8.8", findings=(finding,))
+    analysis = PingAnalysis(
+        target="8.8.8.8",
+        packets_sent=4,
+        packets_received=4,
+        packet_loss_percent=0.0,
+        min_latency_ms=10.0,
+        avg_latency_ms=12.0,
+        max_latency_ms=14.0,
+        findings=(finding,),
+    )
 
     assert analysis.target == "8.8.8.8"
+    assert analysis.packets_sent == 4
+    assert analysis.packets_received == 4
+    assert analysis.packet_loss_percent == 0.0
+    assert analysis.min_latency_ms == 10.0
+    assert analysis.avg_latency_ms == 12.0
+    assert analysis.max_latency_ms == 14.0
     assert analysis.findings == (finding,)
 
 
 def test_ping_analysis_findings_accepts_tuple() -> None:
     """PingAnalysis.findings aceita uma tupla de AnalysisFinding."""
     findings = (make_finding(), make_finding(code="ping.high_latency"))
-    analysis = PingAnalysis(target="8.8.8.8", findings=findings)
+    analysis = make_analysis(findings=findings)
 
     assert isinstance(analysis.findings, tuple)
     assert all(isinstance(item, AnalysisFinding) for item in analysis.findings)
@@ -356,14 +438,14 @@ def test_ping_analysis_findings_accepts_tuple() -> None:
 
 def test_ping_analysis_findings_accepts_empty_tuple() -> None:
     """A tupla de achados pode ser vazia."""
-    analysis = PingAnalysis(target="8.8.8.8", findings=())
+    analysis = make_analysis(findings=())
 
     assert analysis.findings == ()
 
 
 def test_ping_analysis_is_immutable() -> None:
     """A tentativa de alterar um campo levanta FrozenInstanceError."""
-    analysis = PingAnalysis(target="8.8.8.8", findings=())
+    analysis = make_analysis()
 
     with pytest.raises(FrozenInstanceError):
         analysis.target = "1.1.1.1"  # type: ignore[misc]
@@ -371,11 +453,6 @@ def test_ping_analysis_is_immutable() -> None:
 
 def test_ping_analysis_equality_by_value() -> None:
     """Duas análises com os mesmos campos são iguais por valor."""
-    assert (
-        PingAnalysis(target="8.8.8.8", findings=())
-        == PingAnalysis(target="8.8.8.8", findings=())
-    )
-    assert (
-        PingAnalysis(target="8.8.8.8", findings=())
-        != PingAnalysis(target="1.1.1.1", findings=())
-    )
+    assert make_analysis() == make_analysis()
+    assert make_analysis() != make_analysis(target="1.1.1.1")
+    assert make_analysis() != make_analysis(packet_loss_percent=50.0)
