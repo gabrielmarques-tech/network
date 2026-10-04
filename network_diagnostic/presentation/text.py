@@ -181,6 +181,8 @@ def _format_ping_objective(analysis: PingAnalysis) -> str:
             f"Latência mínima: {_format_latency(analysis.min_latency_ms)}",
             f"Latência média: {_format_latency(analysis.avg_latency_ms)}",
             f"Latência máxima: {_format_latency(analysis.max_latency_ms)}",
+            f"Amplitude de latência: "
+            f"{_format_latency(analysis.latency_amplitude_ms)}",
         ]
     )
 

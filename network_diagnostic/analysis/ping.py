@@ -55,7 +55,13 @@ class PingAnalysis:
     - ``min_latency_ms``: latência mínima em ms, ou ``None`` se indisponível.
     - ``avg_latency_ms``: latência média em ms, ou ``None`` se indisponível.
     - ``max_latency_ms``: latência máxima em ms, ou ``None`` se indisponível.
+    - ``latency_amplitude_ms``: amplitude observada (max - min) dos RTTs em
+      ms, ou ``None`` se houver menos de duas respostas.
     - ``findings``: tupla imutável de ``AnalysisFinding``.
+
+    Os campos objetivos são opcionais apenas na amplitude: ela é aditiva e
+    tem default ``None`` para não quebrar o contrato anterior. Sua posição é
+    a última porque os demais campos não possuem default.
     """
 
     target: str
@@ -66,6 +72,20 @@ class PingAnalysis:
     avg_latency_ms: float | None
     max_latency_ms: float | None
     findings: tuple[AnalysisFinding, ...]
+    latency_amplitude_ms: float | None = None
+
+
+def _compute_latency_amplitude(rtts_ms: list[float]) -> float | None:
+    """Calcula a amplitude observada (max - min) dos RTTs, em ms.
+
+    Função pura: usa exclusivamente a lista de RTTs recebida. Com menos de
+    duas respostas não há amplitude a observar e devolve ``None``. Duas ou
+    mais respostas iguais resultam naturalmente em ``0.0``. Não interpreta o
+    valor: amplitude maior ou menor não é classificada como problema.
+    """
+    if len(rtts_ms) < 2:
+        return None
+    return max(rtts_ms) - min(rtts_ms)
 
 
 def analyze_ping(result: PingResult) -> PingAnalysis:
@@ -158,14 +178,17 @@ def analyze_ping(result: PingResult) -> PingAnalysis:
                 ),
                 limitation=(
                     "O RTT depende da distância e da rota até o alvo; valores "
-                    "maiores não indicam necessariamente problema."
+                    "maiores não indicam necessariamente problema. A amplitude "
+                    "observada em ICMP não representa necessariamente a "
+                    "experiência da aplicação."
                 ),
             )
         )
 
     # Copia explícita dos campos objetivos do PingResult para o contrato da
     # análise: cada valor usado pelos achados é também repassado adiante para
-    # a apresentação, sem recalcular nem reinterpretar nada.
+    # a apresentação, sem recalcular nem reinterpretar nada. A amplitude é
+    # calculada exclusivamente a partir dos RTTs observados.
     return PingAnalysis(
         target=result.target,
         packets_sent=result.packets_sent,
@@ -175,4 +198,5 @@ def analyze_ping(result: PingResult) -> PingAnalysis:
         avg_latency_ms=result.avg_latency_ms,
         max_latency_ms=result.max_latency_ms,
         findings=tuple(findings),
+        latency_amplitude_ms=_compute_latency_amplitude(result.rtts_ms),
     )

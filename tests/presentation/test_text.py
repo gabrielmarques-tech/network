@@ -185,6 +185,38 @@ def test_ping_evidencia_objetiva_antes_dos_findings():
     assert text.index("Alvo:") < text.index("ping.no_loss")
 
 
+def test_ping_mostra_amplitude_de_latencia():
+    """A amplitude de latência é exibida no bloco objetivo quando presente."""
+    analysis = _make_ping_analysis(latency_amplitude_ms=20.0)
+
+    text = format_ping_analysis(analysis)
+
+    assert "Amplitude de latência: 20.0 ms" in text
+
+
+def test_ping_amplitude_indisponivel_quando_none():
+    """Sem amplitude observável, a apresentação informa indisponível."""
+    analysis = _make_ping_analysis(latency_amplitude_ms=None)
+
+    text = format_ping_analysis(analysis)
+
+    assert "Amplitude de latência: indisponível" in text
+    assert "Amplitude de latência: None" not in text
+
+
+def test_ping_amplitude_antes_dos_findings():
+    """A amplitude aparece no bloco objetivo, antes dos achados."""
+    finding = _make_finding(code="ping.no_loss")
+    analysis = _make_ping_analysis(
+        latency_amplitude_ms=20.0,
+        findings=(finding,),
+    )
+
+    text = format_ping_analysis(analysis)
+
+    assert text.index("Amplitude de latência:") < text.index("ping.no_loss")
+
+
 def _make_hop(**overrides: object) -> HopResult:
     """Constrói um ``HopResult`` diretamente, sem executar diagnósticos."""
     data: dict[str, object] = {

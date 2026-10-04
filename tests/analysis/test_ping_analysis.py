@@ -456,3 +456,86 @@ def test_ping_analysis_equality_by_value() -> None:
     assert make_analysis() == make_analysis()
     assert make_analysis() != make_analysis(target="1.1.1.1")
     assert make_analysis() != make_analysis(packet_loss_percent=50.0)
+
+
+# ---------------------------------------------------------------------------
+# Amplitude de latência observada (max - min dos RTTs)
+# ---------------------------------------------------------------------------
+
+
+def test_latency_amplitude_for_three_rtts() -> None:
+    """Com três respostas, a amplitude é max - min dos RTTs."""
+    result = make_result(rtts_ms=[10.0, 20.0, 30.0])
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms == 20.0
+
+
+def test_latency_amplitude_none_for_empty_rtts() -> None:
+    """Sem respostas não há amplitude observável."""
+    result = make_result(rtts_ms=[])
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms is None
+
+
+def test_latency_amplitude_none_for_single_rtt() -> None:
+    """Com uma única resposta não há amplitude a observar."""
+    result = make_result(rtts_ms=[10.0])
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms is None
+
+
+def test_latency_amplitude_zero_for_equal_rtts() -> None:
+    """Duas ou mais respostas iguais resultam em amplitude 0.0."""
+    result = make_result(rtts_ms=[10.0, 10.0])
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms == 0.0
+
+
+def test_latency_amplitude_uses_rtts_ms_exclusively() -> None:
+    """O cálculo usa result.rtts_ms, não os campos min/max_latency_ms.
+
+    Os campos min/max são preenchidos de propósito de forma inconsistente com
+    os RTTs para provar que a amplitude não depende deles.
+    """
+    result = make_result(
+        min_latency_ms=0.0,
+        max_latency_ms=999.0,
+        rtts_ms=[100.0, 150.0],
+    )
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms == 50.0
+
+
+def test_latency_amplitude_none_on_total_loss() -> None:
+    """Na perda total não há respostas e a amplitude é None."""
+    result = make_total_loss_result()
+
+    analysis = analyze_ping(result)
+
+    assert analysis.latency_amplitude_ms is None
+
+
+def test_latency_amplitude_does_not_change_findings() -> None:
+    """Adicionar a amplitude não altera a ordem nem os códigos dos achados."""
+    result = make_result(rtts_ms=[10.0, 20.0, 30.0])
+
+    analysis = analyze_ping(result)
+
+    assert codes(analysis) == ["ping.no_loss", "ping.latency_observed"]
+
+
+def test_ping_analysis_latency_amplitude_defaults_to_none() -> None:
+    """Sem informar a amplitude, o campo assume None (aditivo)."""
+    analysis = make_analysis()
+
+    assert analysis.latency_amplitude_ms is None
