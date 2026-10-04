@@ -11,16 +11,19 @@ Responsabilidade:
     TracerouteAnalysis  →  format_traceroute_analysis()  →  str
 
 Para o ping, o texto exibe primeiro o bloco de evidência objetiva carregado
-pela análise e, em seguida, os achados. Para o traceroute, exibe apenas os
+pela análise e, em seguida, os achados. Para o traceroute, exibe o alvo, o
+bloco da rota coletada (evidência, sem interpretação) e, em seguida, os
 achados. Em ambos os casos o texto reproduz somente o que já existe nos
 objetos de análise (severidade, código, resumo, explicação e, quando
 preenchida, a limitação), preservando a ordem em que os achados foram
-produzidos pela camada de análise.
+produzidos pela camada de análise. A rota não recebe severidade nem
+diagnóstico: é exibida apenas como evidência.
 """
 
 from network_diagnostic.analysis.findings import AnalysisFinding, Severity
 from network_diagnostic.analysis.ping import PingAnalysis
 from network_diagnostic.analysis.traceroute import TracerouteAnalysis
+from network_diagnostic.models.results import HopResult
 
 # Rótulos visuais em português para cada nível de severidade existente.
 _SEVERITY_LABELS: dict[Severity, str] = {
@@ -65,13 +68,22 @@ def _format_findings(findings: tuple[AnalysisFinding, ...]) -> str:
     return "\n".join(_format_finding(finding) for finding in findings)
 
 
-def _format_analysis(target: str, findings: tuple[AnalysisFinding, ...]) -> str:
-    """Monta o texto de uma análise a partir de seu alvo e achados.
+def _format_analysis(
+    target: str,
+    findings: tuple[AnalysisFinding, ...],
+    route: str | None = None,
+) -> str:
+    """Monta o texto de uma análise a partir de seu alvo, rota e achados.
 
     Função pura e determinística: preserva a ordem dos achados recebidos e
-    não produz nenhuma informação que não esteja contida neles.
+    não produz nenhuma informação que não esteja contida neles. O bloco de
+    rota é opcional: quando ``route`` é ``None`` o comportamento é idêntico
+    ao anterior, exibindo apenas alvo e achados.
     """
     lines = [f"Alvo: {target}"]
+
+    if route is not None:
+        lines.append(route)
 
     if not findings:
         lines.append("Nenhum achado de análise foi produzido para esta execução.")
@@ -91,6 +103,64 @@ def _format_latency(value: float | None) -> str:
     if value is None:
         return _LATENCY_UNAVAILABLE
     return f"{value} ms"
+
+
+def _format_rtt(value: float | None) -> str:
+    """Formata uma medição RTT de um hop para exibição na rota.
+
+    Função pura: quando ``value`` é ``None`` (sondagem sem resposta) devolve
+    ``*``; caso contrário devolve o valor seguido de ``ms``. O valor do modelo
+    é preservado como está (por exemplo, ``0.0 ms``); a apresentação não
+    reinterpreta a convenção de ``<1 ms`` nesta etapa.
+    """
+    if value is None:
+        return "*"
+    return f"{value} ms"
+
+
+def _format_hop_identifier(hop: HopResult) -> str:
+    """Identifica um hop a partir de hostname e/ou endereço.
+
+    Função pura, apenas de formatação: combina o que existir no modelo, sem
+    inventar informação. As combinações possíveis são ``hostname [address]``
+    (ambos), ``hostname`` (só nome), ``address`` (só IP) e um rótulo neutro
+    quando nenhum dos dois existe.
+    """
+    if hop.hostname and hop.address:
+        return f"{hop.hostname} [{hop.address}]"
+    if hop.hostname:
+        return hop.hostname
+    if hop.address:
+        return hop.address
+    return "(sem identificação)"
+
+
+def _format_hop_line(hop: HopResult) -> str:
+    """Monta a linha de um único hop da rota.
+
+    Função pura: exibe número do hop, identificação e as três medições RTT.
+    A linha é apenas evidência: não recebe severidade nem interpretação.
+    """
+    rtts = hop.rtts_ms
+    rtt_columns = "   ".join(_format_rtt(rtt) for rtt in rtts)
+    identifier = _format_hop_identifier(hop)
+    return f"  {hop.hop_number}  {identifier}  {rtt_columns}"
+
+
+def _format_route(hops: tuple[HopResult, ...]) -> str:
+    """Monta o bloco textual da rota coletada.
+
+    Função pura e determinística: preserva a ordem dos hops recebidos e não
+    produz nenhuma informação que não esteja neles. Quando não há hops,
+    informa explicitamente que a rota não foi coletada, sem inventar dados.
+    """
+    lines = ["Rota:"]
+    if not hops:
+        lines.append("  Nenhum hop foi coletado nesta execução.")
+    else:
+        for hop in hops:
+            lines.append(_format_hop_line(hop))
+    return "\n".join(lines)
 
 
 def _format_ping_objective(analysis: PingAnalysis) -> str:
@@ -138,5 +208,12 @@ def format_traceroute_analysis(analysis: TracerouteAnalysis) -> str:
     Função pura: recebe apenas o objeto de análise e devolve uma ``str``.
     Não executa comandos, não acessa a rede, não faz parsing, não cria novos
     achados e não altera o objeto recebido.
+
+    A saída apresenta o alvo, o bloco da rota coletada (evidência, sem
+    interpretação) e, em seguida, os achados. A rota é montada por
+    ``_format_route`` e entregue a ``_format_analysis`` como um bloco
+    opcional; nenhum hop é reclassificado e nenhuma severidade é atribuída
+    à rota.
     """
-    return _format_analysis(analysis.target, analysis.findings)
+    route = _format_route(analysis.hops)
+    return _format_analysis(analysis.target, analysis.findings, route=route)

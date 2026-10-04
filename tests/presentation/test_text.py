@@ -8,6 +8,7 @@ parsing.
 from network_diagnostic.analysis.findings import AnalysisFinding, Severity
 from network_diagnostic.analysis.ping import PingAnalysis
 from network_diagnostic.analysis.traceroute import TracerouteAnalysis
+from network_diagnostic.models.results import HopResult
 from network_diagnostic.presentation.text import (
     format_ping_analysis,
     format_traceroute_analysis,
@@ -184,6 +185,18 @@ def test_ping_evidencia_objetiva_antes_dos_findings():
     assert text.index("Alvo:") < text.index("ping.no_loss")
 
 
+def _make_hop(**overrides: object) -> HopResult:
+    """Constrói um ``HopResult`` diretamente, sem executar diagnósticos."""
+    data: dict[str, object] = {
+        "hop_number": 1,
+        "rtts_ms": [1.0, 2.0, 3.0],
+        "address": "192.168.1.1",
+        "hostname": None,
+    }
+    data.update(overrides)
+    return HopResult(**data)  # type: ignore[arg-type]
+
+
 def test_traceroute_com_finding():
     finding = _make_finding(
         code="traceroute.hop_no_response",
@@ -192,7 +205,7 @@ def test_traceroute_com_finding():
         explanation="Todas as medições do salto 3 estão sem resposta.",
         limitation="Isso não significa perda de pacotes.",
     )
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(finding,))
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(finding,), hops=())
 
     text = format_traceroute_analysis(analysis)
 
@@ -204,12 +217,109 @@ def test_traceroute_com_finding():
 
 
 def test_traceroute_sem_findings():
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=())
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
 
     text = format_traceroute_analysis(analysis)
 
     assert isinstance(text, str)
     assert "Nenhum achado" in text
+
+
+def test_traceroute_mostra_numero_e_endereco_do_hop():
+    """A rota exibe o número do hop e o endereço quando disponível."""
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(),
+        hops=(_make_hop(hop_number=2, address="10.0.0.1", hostname=None),),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert "Rota:" in text
+    assert "2" in text
+    assert "10.0.0.1" in text
+
+
+def test_traceroute_mostra_hostname_com_endereco():
+    """Com hostname e endereço, a identificação é 'hostname [address]'."""
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(),
+        hops=(
+            _make_hop(address="8.8.8.8", hostname="dns.google"),
+        ),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert "dns.google [8.8.8.8]" in text
+
+
+def test_traceroute_mostra_somente_hostname():
+    """Sem endereço, a identificação é apenas o hostname."""
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(),
+        hops=(_make_hop(address=None, hostname="router.local"),),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert "router.local" in text
+
+
+def test_traceroute_mostra_os_tres_rtts():
+    """Os três RTTs do hop são exibidos."""
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(),
+        hops=(_make_hop(rtts_ms=[8.0, 7.0, 9.0]),),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert "8.0 ms" in text
+    assert "7.0 ms" in text
+    assert "9.0 ms" in text
+
+
+def test_traceroute_rtt_none_vira_asterisco():
+    """Uma sondagem sem resposta (None) é exibida como '*'."""
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(),
+        hops=(_make_hop(rtts_ms=[3.0, None, 3.0]),),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert "*" in text
+    assert "None" not in text
+
+
+def test_traceroute_rota_aparece_antes_dos_findings():
+    """O bloco de rota é exibido antes dos achados."""
+    finding = _make_finding(code="traceroute.hop_no_response")
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8",
+        findings=(finding,),
+        hops=(_make_hop(address="10.0.0.1"),),
+    )
+
+    text = format_traceroute_analysis(analysis)
+
+    assert text.index("Rota:") < text.index("traceroute.hop_no_response")
+
+
+def test_traceroute_sem_hops_nao_quebra():
+    """Sem hops, a saída informa a ausência de rota sem quebrar."""
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
+
+    text = format_traceroute_analysis(analysis)
+
+    assert isinstance(text, str)
+    assert "Rota:" in text
+    assert "Nenhum hop" in text
 
 
 def test_preservacao_da_ordem():
@@ -227,7 +337,9 @@ def test_preservacao_da_ordem():
 def test_retorno_como_str():
     ping_analysis = _make_ping_analysis(findings=(_make_finding(),))
     traceroute_analysis = TracerouteAnalysis(
-        target="8.8.8.8", findings=(_make_finding(code="traceroute.hop_no_response"),)
+        target="8.8.8.8",
+        findings=(_make_finding(code="traceroute.hop_no_response"),),
+        hops=(),
     )
 
     assert isinstance(format_ping_analysis(ping_analysis), str)

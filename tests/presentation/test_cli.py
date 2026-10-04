@@ -41,7 +41,7 @@ def _fake_ping_analysis(target: str = "8.8.8.8") -> PingAnalysis:
 
 def _fake_traceroute_analysis(target: str = "8.8.8.8") -> TracerouteAnalysis:
     """Cria um TracerouteAnalysis fictício, sem executar diagnóstico nem análise."""
-    return TracerouteAnalysis(target=target, findings=())
+    return TracerouteAnalysis(target=target, findings=(), hops=())
 
 
 # ---------------------------------------------------------------------------

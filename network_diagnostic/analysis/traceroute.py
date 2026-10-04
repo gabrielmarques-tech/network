@@ -48,10 +48,15 @@ class TracerouteAnalysis:
 
     - ``target``: alvo analisado (o mesmo alvo da evidência de origem).
     - ``findings``: tupla imutável de ``AnalysisFinding``.
+    - ``hops``: tupla imutável com a evidência de rota coletada
+      (``HopResult``), transportada do ``TracerouteResult`` de origem sem
+      interpretação adicional. Cada hop é carregado exatamente como está no
+      modelo, apenas para que a apresentação possa exibir a rota.
     """
 
     target: str
     findings: tuple[AnalysisFinding, ...]
+    hops: tuple[HopResult, ...]
 
 
 def _analyze_hop(hop: HopResult) -> AnalysisFinding | None:
@@ -125,6 +130,10 @@ def analyze_traceroute(result: TracerouteResult) -> TracerouteAnalysis:
 
     Os achados seguem a ordem dos saltos em ``result.hops``. Saltos totalmente
     responsivos e saltos sem sondagens (``rtts_ms == []``) não geram achado.
+
+    Além dos achados, a evidência de rota é transportada adiante em
+    ``hops``: os ``HopResult`` são copiados de ``result.hops`` sem qualquer
+    interpretação, para que a apresentação possa exibir a rota coletada.
     """
     findings: list[AnalysisFinding] = []
 
@@ -133,4 +142,8 @@ def analyze_traceroute(result: TracerouteResult) -> TracerouteAnalysis:
         if finding is not None:
             findings.append(finding)
 
-    return TracerouteAnalysis(target=result.target, findings=tuple(findings))
+    return TracerouteAnalysis(
+        target=result.target,
+        findings=tuple(findings),
+        hops=tuple(result.hops),
+    )

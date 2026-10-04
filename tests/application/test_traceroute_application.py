@@ -42,7 +42,7 @@ def test_application_calls_diagnostics_with_expected_params(monkeypatch) -> None
     monkeypatch.setattr(
         application_traceroute,
         "analyze_traceroute",
-        lambda result: TracerouteAnalysis(result.target, ()),
+        lambda result: TracerouteAnalysis(result.target, (), ()),
     )
 
     diagnose_and_analyze_traceroute("8.8.8.8", max_hops=15, timeout_ms=2000)
@@ -65,7 +65,7 @@ def test_application_forwards_defaults(monkeypatch) -> None:
     monkeypatch.setattr(
         application_traceroute,
         "analyze_traceroute",
-        lambda result: TracerouteAnalysis(result.target, ()),
+        lambda result: TracerouteAnalysis(result.target, (), ()),
     )
 
     diagnose_and_analyze_traceroute("8.8.8.8")
@@ -87,7 +87,7 @@ def test_application_passes_result_exactly_to_analysis(monkeypatch) -> None:
 
     def fake_analyze(result):
         captured["result"] = result
-        return TracerouteAnalysis(result.target, ())
+        return TracerouteAnalysis(result.target, (), ())
 
     monkeypatch.setattr(application_traceroute, "analyze_traceroute", fake_analyze)
 
@@ -98,7 +98,7 @@ def test_application_passes_result_exactly_to_analysis(monkeypatch) -> None:
 
 def test_application_returns_analysis_result_unchanged(monkeypatch) -> None:
     """O mesmo TracerouteAnalysis produzido pela análise é retornado."""
-    expected = TracerouteAnalysis(target="8.8.8.8", findings=())
+    expected = TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
 
     monkeypatch.setattr(
         application_traceroute,
@@ -122,7 +122,7 @@ def test_application_propagates_diagnostics_error(monkeypatch) -> None:
     monkeypatch.setattr(
         application_traceroute,
         "analyze_traceroute",
-        lambda result: TracerouteAnalysis(result.target, ()),
+        lambda result: TracerouteAnalysis(result.target, (), ()),
     )
 
     with pytest.raises(RuntimeError):
@@ -155,7 +155,7 @@ def test_application_does_not_call_analysis_when_diagnostics_fails(monkeypatch) 
 
     def fake_analyze(result):
         analysis_called["called"] = True
-        return TracerouteAnalysis(result.target, ())
+        return TracerouteAnalysis(result.target, (), ())
 
     monkeypatch.setattr(application_traceroute, "collect_traceroute_result", fake_collect)
     monkeypatch.setattr(application_traceroute, "analyze_traceroute", fake_analyze)

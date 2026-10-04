@@ -220,12 +220,16 @@ def test_partial_messages_do_not_claim_packet_loss():
 
 
 def test_traceroute_analysis_stores_attributes_as_given() -> None:
-    """TracerouteAnalysis armazena target e findings como informados."""
+    """TracerouteAnalysis armazena target, findings e hops como informados."""
     finding = make_finding()
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(finding,))
+    hop = make_hop()
+    analysis = TracerouteAnalysis(
+        target="8.8.8.8", findings=(finding,), hops=(hop,)
+    )
 
     assert analysis.target == "8.8.8.8"
     assert analysis.findings == (finding,)
+    assert analysis.hops == (hop,)
 
 
 def test_traceroute_analysis_findings_accepts_tuple() -> None:
@@ -234,7 +238,7 @@ def test_traceroute_analysis_findings_accepts_tuple() -> None:
         make_finding(),
         make_finding(code="traceroute.hop_partial_response"),
     )
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=findings)
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=findings, hops=())
 
     assert isinstance(analysis.findings, tuple)
     assert all(isinstance(item, AnalysisFinding) for item in analysis.findings)
@@ -242,14 +246,39 @@ def test_traceroute_analysis_findings_accepts_tuple() -> None:
 
 def test_traceroute_analysis_findings_accepts_empty_tuple() -> None:
     """A tupla de achados pode ser vazia."""
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=())
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
 
     assert analysis.findings == ()
 
 
+def test_traceroute_analysis_hops_is_a_tuple() -> None:
+    """A evidência de rota é exposta como uma tupla de HopResult."""
+    analysis = analyze_traceroute(make_result())
+
+    assert isinstance(analysis.hops, tuple)
+    assert all(isinstance(hop, HopResult) for hop in analysis.hops)
+
+
+def test_traceroute_analysis_preserves_result_hops() -> None:
+    """analyze_traceroute transporta os hops do resultado sem alterá-los."""
+    result = make_result(
+        hops=[
+            make_hop(hop_number=1, rtts_ms=[1.0, 2.0, 3.0]),
+            make_hop(hop_number=2, rtts_ms=[None, None, None]),
+            make_hop(hop_number=3, rtts_ms=[10.0, None, 12.0]),
+        ]
+    )
+
+    analysis = analyze_traceroute(result)
+
+    # result.hops é uma lista e analysis.hops é uma tupla (contrato da análise);
+    # comparamos a equivalência de valores convertendo a lista em tupla.
+    assert analysis.hops == tuple(result.hops)
+
+
 def test_traceroute_analysis_is_immutable() -> None:
     """A tentativa de alterar um campo levanta FrozenInstanceError."""
-    analysis = TracerouteAnalysis(target="8.8.8.8", findings=())
+    analysis = TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
 
     with pytest.raises(FrozenInstanceError):
         analysis.target = "1.1.1.1"  # type: ignore[misc]
@@ -258,10 +287,10 @@ def test_traceroute_analysis_is_immutable() -> None:
 def test_traceroute_analysis_equality_by_value() -> None:
     """Duas análises com os mesmos campos são iguais por valor."""
     assert (
-        TracerouteAnalysis(target="8.8.8.8", findings=())
-        == TracerouteAnalysis(target="8.8.8.8", findings=())
+        TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
+        == TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
     )
     assert (
-        TracerouteAnalysis(target="8.8.8.8", findings=())
-        != TracerouteAnalysis(target="1.1.1.1", findings=())
+        TracerouteAnalysis(target="8.8.8.8", findings=(), hops=())
+        != TracerouteAnalysis(target="1.1.1.1", findings=(), hops=())
     )
