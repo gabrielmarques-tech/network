@@ -6,6 +6,7 @@ ou acessa a rede. O parsing da saída é testado em tests/parsers/test_ping.py.
 """
 
 import subprocess
+import sys
 
 import pytest
 
@@ -58,6 +59,7 @@ def test_run_ping_calls_subprocess_with_expected_args(monkeypatch) -> None:
     assert captured["kwargs"] == {
         "capture_output": True,
         "text": True,
+        "encoding": "oem",
         "shell": False,
     }
     assert result is fake_completed
@@ -122,3 +124,42 @@ def test_diagnose_ping_parse_error(monkeypatch) -> None:
 
     with pytest.raises(PingParseError):
         diagnose_ping("8.8.8.8")
+
+
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="O codec 'oem' e a codepage OEM só existem no Windows.",
+)
+def test_run_ping_decodes_stdout_using_oem_encoding(monkeypatch) -> None:
+    """run_ping decodifica a saída com a codepage OEM do console.
+
+    Protege o contrato de encoding: o ping.exe escreve na codepage OEM, não na
+    codepage preferida do sistema. O teste substitui subprocess.run por um que
+    repassa os mesmos kwargs a um subprocess de verdade que apenas escreve
+    bytes na codepage OEM de um texto acentuado, sem acessar a rede nem
+    executar ping.exe. Confirma que run_ping (com encoding="oem") decodifica
+    corretamente esses bytes.
+    """
+    expected_text = "Página de código ativa"
+    oem_bytes = expected_text.encode("oem")
+
+    real_run = subprocess.run
+
+    def fake_run(command, **kwargs):
+        # Repassa os kwargs reais (incluindo encoding="oem") a um subprocess
+        # que apenas emite os bytes OEM; nenhum comando de rede é executado.
+        child = [
+            sys.executable,
+            "-c",
+            "import sys; sys.stdout.buffer.write(bytes.fromhex('%s'))"
+            % oem_bytes.hex(),
+        ]
+        return real_run(child, **kwargs)
+
+    monkeypatch.setattr(
+        "network_diagnostic.diagnostics.ping.subprocess.run", fake_run
+    )
+
+    result = run_ping("8.8.8.8")
+
+    assert result.stdout == expected_text

@@ -26,10 +26,15 @@ def run_ping(target: str, count: int = 4) -> subprocess.CompletedProcess[str]:
     CompletedProcess (stdout, stderr, returncode).
     """
     command = ["ping", "-n", str(count), target]
+    # O ping.exe do Windows escreve na codepage OEM do console. Sem "oem",
+    # o Python decodifica com a codepage preferida do sistema (cp1252), o que
+    # corrompe acentos da saída PT-BR. O codec "oem" acompanha a codepage
+    # OEM ativa da máquina, diferente de fixar uma codepage como cp850.
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
+        encoding="oem",
         shell=False,
     )
 
