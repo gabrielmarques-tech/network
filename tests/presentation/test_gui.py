@@ -35,9 +35,9 @@ def _fake_ping_analysis(target: str = "8.8.8.8") -> PingAnalysis:
 
 
 def test_worker_repassa_target_e_exibe_resultado(monkeypatch) -> None:
-    """O destino é repassado à aplicação e o texto formatado vai para a fila."""
+    """O destino é repassado à aplicação e o PingAnalysis vai para a fila."""
     captured: dict[str, object] = {}
-    result_queue: "queue.Queue[tuple[str, str]]" = queue.Queue()
+    result_queue: "queue.Queue[tuple[str, PingAnalysis | str]]" = queue.Queue()
 
     def fake_diagnose(target):
         captured["target"] = target
@@ -47,10 +47,10 @@ def test_worker_repassa_target_e_exibe_resultado(monkeypatch) -> None:
 
     gui.run_ping_diagnosis("1.1.1.1", result_queue)
 
-    kind, text = result_queue.get_nowait()
+    kind, payload = result_queue.get_nowait()
     assert captured["target"] == "1.1.1.1"
     assert kind == "ok"
-    assert "Alvo: 1.1.1.1" in text
+    assert payload == _fake_ping_analysis("1.1.1.1")
     assert result_queue.empty()
 
 
